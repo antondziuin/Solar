@@ -219,6 +219,12 @@ export class UI {
     sld('s-amb', 'o-amb', (v) => (v === 0 ? 'off' : v.toFixed(2)), (v) => { app.settings.ambient = v; });
     sld('s-stars', 'o-stars', (v) => v.toFixed(1), (v) => { app.sky.brightness = v; });
     sld('s-bloom', 'o-bloom', (v) => v.toFixed(2), (v) => { if (app.bloom) app.bloom.strength = v; app.settings.bloom = v; });
+    const mouse = this.$('s-mouse');
+    try { const m = parseFloat(localStorage.getItem('solar.mouse')); if (m > 0) mouse.value = m; } catch { /* storage unavailable */ }
+    sld('s-mouse', 'o-mouse', (v) => `${v.toFixed(2)}×`, (v) => {
+      app.controller.sensitivity = v;
+      try { localStorage.setItem('solar.mouse', String(v)); } catch { /* storage unavailable */ }
+    });
     sld('s-lod', 'o-lod', (v) => v.toFixed(1), (v) => app.setDetail(v));
     sld('s-res', 'o-res', (v) => `${Math.round(v * 100)}%`, (v) => app.setResolution(v));
   }

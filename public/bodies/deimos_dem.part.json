@@ -1,0 +1,8 @@
+{
+ "file": "bodies/deimos_dem.png",
+ "radius": 5733.4781428709975,
+ "width": 360,
+ "height": 180,
+ "source": "Ernst et al. 2023 (CC-BY-4.0), via Celestia",
+ "shape": true
+}

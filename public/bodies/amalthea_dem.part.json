@@ -1,0 +1,9 @@
+{
+ "file": "bodies/amalthea_dem.png",
+ "radius": 68173.80271065027,
+ "width": 360,
+ "height": 180,
+ "source": "Stooke small-body shape model (NASA PDS), via Celestia",
+ "shape": true,
+ "scale": 3
+}

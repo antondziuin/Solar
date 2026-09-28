@@ -296,6 +296,11 @@ export class TerrainModel {
       const [u, v] = dirToUV(x, y, z);
       if (this.samplers.water.sample(u, v) > 0.5 || h < -25) return 0;
     }
+    if (this.special === 1 && this.samplers.water) {
+      // shelf seas: the data puts the floor below sea level (mirrors isOcean in GLSL)
+      const [u, v] = dirToUV(x, y, z);
+      if (this.samplers.water.sample(u, v) > 0.5 && this._baseHeight(x, y, z) < 0.5) return 0;
+    }
     return h;
   }
 

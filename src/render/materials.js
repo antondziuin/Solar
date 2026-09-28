@@ -152,6 +152,7 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uBodyMap: { value: dummyTex },
     uHasMap: { value: 0 },
     uMapGain: { value: 1 },
+    uMapGray: { value: new THREE.Vector2(0, 0.5) },
   };
   const defines = {};
   if (mode === 'rock') defines.MODE_ROCK = '';

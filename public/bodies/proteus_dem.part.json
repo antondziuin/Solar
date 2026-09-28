@@ -1,0 +1,9 @@
+{
+ "file": "bodies/proteus_dem.png",
+ "radius": 200714.60674590291,
+ "width": 360,
+ "height": 180,
+ "source": "Stooke small-body shape model (NASA PDS), via Celestia",
+ "shape": true,
+ "scale": 2
+}

@@ -50,11 +50,10 @@ JOBS = [
     ("io", "map", "mosaic/Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif", 2048),
     ("ganymede", "map", "mosaic/Ganymede_Voyager_GalileoSSI_Global_ClrMosaic_1435m.tif", 2048),
     ("jupiter", "map", "wms_basemaps/Jupiter/Jupiter/originals/jupiter_from_cassini.tif", 2048),
-    ("callisto", "map", "nasa3d:Jupiter - Callisto", 0),
-    ("europa", "map", "nasa3d:Jupiter - Europa", 0),
+    ("europa", "map", "mosaic/Europa_Voyager_GalileoSSI_global_mosaic_500m.tif", 4096),
+    ("callisto", "map", "mosaic/Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif", 2048),
     ("mars", "map", "nasa3d:Mars", 0),
     ("phobos", "map", "nasa3d:Mars - Phobos", 0),
-    ("deimos", "map", "nasa3d:Mars - Deimos", 0),
     ("pluto", "map", "nasa3d:Pluto", 0),
     ("charon", "map", "nasa3d:Pluto - Charon", 0),
     ("mimas", "map", "nasa3d:Saturn - Mimas", 0),
@@ -74,6 +73,9 @@ JOBS = [
 
 # surface maps whose polar rows are unusable (treated as no data -> procedural colour)
 MAP_LAT_LIMIT = {"moon": 77.0}
+# colour mosaics patched with grayscale frames (Ganymede's north): keep the brightness only,
+# the viewer colours single-band maps with the body's palette
+GRAY_MAPS = {"ganymede", "triton"}  # Triton: Voyager colour mosaic has a green cast
 
 # DEMs whose heights are relative to an equipotential surface close to the body's ellipsoid
 ELLIPSOID_DEMS = {"mars"}
@@ -175,15 +177,48 @@ def save_map(bid, img, ok):
     img = np.asarray(img, np.float32)
     if img.ndim == 2:
         img = img[..., None].repeat(3, -1)
+    if bid in GRAY_MAPS:
+        img = (img * np.array([0.2126, 0.7152, 0.0722], np.float32)).sum(-1, keepdims=True).repeat(3, -1)
     ok2 = ok if ok.ndim == 2 else ok.all(0)
     if bid in MAP_LAT_LIMIT:
         lat = 90.0 - 180.0 * (np.arange(ok2.shape[0]) + 0.5) / ok2.shape[0]
         ok2 = ok2 & (np.abs(lat) < MAP_LAT_LIMIT[bid])[:, None]
+    # fill pinholes (isolated bad pixels) from their neighbours; large gaps stay no-data
+    img = img.copy()
+    for _ in range(3):
+        acc = np.zeros_like(img); cnt = np.zeros(ok2.shape)
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            m = np.roll(ok2, (dy, dx), (0, 1))
+            acc += np.where(m[..., None], np.roll(img, (dy, dx), (0, 1)), 0)
+            cnt += m
+        fill = ~ok2 & (cnt >= 3)
+        img[fill] = acc[fill] / cnt[fill][:, None]
+        ok2 = ok2 | fill
+    # mosaic rims are often darkened or smeared: trim 2 px along large gaps
+    if ok2.mean() < 0.97:
+        for _ in range(2):
+            ok2 = ok2 & np.roll(ok2, 1, 0) & np.roll(ok2, -1, 0) & np.roll(ok2, 1, 1) & np.roll(ok2, -1, 1)
+    # polar gaps (never imaged): the mean tone of the latitude row (or the nearest covered one)
+    # instead of a patchwork of map and procedural surface
+    H = ok2.shape[0]
+    lat = 90.0 - 180.0 * (np.arange(H) + 0.5) / H
+    cov = ok2.mean(1)
+    if cov.mean() > 0.5 and bid not in MAP_LAT_LIMIT:
+        for rows in (np.where(lat > 55)[0][::-1], np.where(lat < -55)[0]):  # equator -> pole
+            last = None
+            for r in rows:
+                if cov[r] > 0.02:
+                    last = img[r][ok2[r]].mean(0)
+                if last is not None:
+                    img[r][~ok2[r]] = last
+                    ok2[r] = True
     # stretch to the valid range, keep no-data black (the viewer treats black as "no data")
     v = img[ok2]
-    lo, hi = np.percentile(v, 0.5), np.percentile(v, 99.8)
+    # scale only (no offset): keeps the albedo ratios of photometric mosaics
+    lo, hi = 0.0, np.percentile(v, 99.8)
     img = np.clip((img - lo) / max(hi - lo, 1e-6), 0, 1)
-    img = np.where(ok2[..., None], np.maximum(img, 2 / 255), 0)
+    # valid pixels stay above the viewer's no-data threshold (sRGB 14/255 ~ linear 0.0044)
+    img = np.where(ok2[..., None], np.maximum(img, 14 / 255), 0)
     path = os.path.join(OUT, f"{bid}_map.jpg")
     Image.fromarray((img * 255).astype(np.uint8), "RGB").save(path, quality=90)
     print(f"  -> {path} {os.path.getsize(path) / 1e6:.2f} MB {img.shape[1]}x{img.shape[0]}")
