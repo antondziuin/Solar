@@ -189,6 +189,20 @@ def save_map(bid, img, ok):
         fill = ~ok2 & (cnt >= 3)
         img[fill] = acc[fill] / cnt[fill][:, None]
         ok2 = ok2 | fill
+    # polar gaps (never imaged): the mean tone of the latitude row (or the nearest covered one)
+    # instead of a patchwork of map and procedural surface
+    H = ok2.shape[0]
+    lat = 90.0 - 180.0 * (np.arange(H) + 0.5) / H
+    cov = ok2.mean(1)
+    if cov.mean() > 0.5 and bid not in MAP_LAT_LIMIT:
+        for rows in (np.where(lat > 55)[0][::-1], np.where(lat < -55)[0]):  # equator -> pole
+            last = None
+            for r in rows:
+                if cov[r] > 0.02:
+                    last = img[r][ok2[r]].mean(0)
+                if last is not None:
+                    img[r][~ok2[r]] = last
+                    ok2[r] = True
     # stretch to the valid range, keep no-data black (the viewer treats black as "no data")
     v = img[ok2]
     # scale only (no offset): keeps the albedo ratios of photometric mosaics
