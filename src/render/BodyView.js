@@ -113,6 +113,7 @@ export class BodyView {
         U.uHasMap.value = 1;
         // match the mean albedo, but never push the brightest terrain above ~0.95
         U.uMapGain.value = Math.min(target / Math.max(m.mean, 1e-3), 0.95 / Math.max(m.p99, 1e-3));
+        if (m.gray && this.mode !== 'gas') U.uMapGray.value.set(b.surface.mapTint ?? 0.6, Math.max(m.mean, 1e-3));
       }));
     }
     try { await Promise.all(jobs); } catch (e) { console.warn('body data', b.id, e); }

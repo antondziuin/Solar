@@ -50,11 +50,10 @@ JOBS = [
     ("io", "map", "mosaic/Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif", 2048),
     ("ganymede", "map", "mosaic/Ganymede_Voyager_GalileoSSI_Global_ClrMosaic_1435m.tif", 2048),
     ("jupiter", "map", "wms_basemaps/Jupiter/Jupiter/originals/jupiter_from_cassini.tif", 2048),
-    ("callisto", "map", "nasa3d:Jupiter - Callisto", 0),
-    ("europa", "map", "nasa3d:Jupiter - Europa", 0),
+    ("europa", "map", "mosaic/Europa_Voyager_GalileoSSI_global_mosaic_500m.tif", 4096),
+    ("callisto", "map", "mosaic/Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif", 2048),
     ("mars", "map", "nasa3d:Mars", 0),
     ("phobos", "map", "nasa3d:Mars - Phobos", 0),
-    ("deimos", "map", "nasa3d:Mars - Deimos", 0),
     ("pluto", "map", "nasa3d:Pluto", 0),
     ("charon", "map", "nasa3d:Pluto - Charon", 0),
     ("mimas", "map", "nasa3d:Saturn - Mimas", 0),
@@ -181,9 +180,11 @@ def save_map(bid, img, ok):
         ok2 = ok2 & (np.abs(lat) < MAP_LAT_LIMIT[bid])[:, None]
     # stretch to the valid range, keep no-data black (the viewer treats black as "no data")
     v = img[ok2]
-    lo, hi = np.percentile(v, 0.5), np.percentile(v, 99.8)
+    # scale only (no offset): keeps the albedo ratios of photometric mosaics
+    lo, hi = 0.0, np.percentile(v, 99.8)
     img = np.clip((img - lo) / max(hi - lo, 1e-6), 0, 1)
-    img = np.where(ok2[..., None], np.maximum(img, 2 / 255), 0)
+    # valid pixels stay above the viewer's no-data threshold (sRGB 14/255 ~ linear 0.0044)
+    img = np.where(ok2[..., None], np.maximum(img, 14 / 255), 0)
     path = os.path.join(OUT, f"{bid}_map.jpg")
     Image.fromarray((img * 255).astype(np.uint8), "RGB").save(path, quality=90)
     print(f"  -> {path} {os.path.getsize(path) / 1e6:.2f} MB {img.shape[1]}x{img.shape[0]}")

@@ -17,9 +17,10 @@ export async function loadBodyDem(base, entry) {
   const { width: W, height: H, data: px } = img;
   const a = new Float32Array(W * H * 2);
   let min = Infinity, max = -Infinity;
+  const k = entry.scale || 1; // metres per unit (large relief of small irregular moons)
   for (let i = 0; i < W * H; i++) {
     const valid = px[i * 4 + 2] > 127 ? 1 : 0;
-    const h = valid ? px[i * 4] * 256 + px[i * 4 + 1] - 32768 : 0;
+    const h = valid ? (px[i * 4] * 256 + px[i * 4 + 1] - 32768) * k : 0;
     a[i * 2] = h;
     a[i * 2 + 1] = valid;
     if (valid) { if (h < min) min = h; if (h > max) max = h; }
@@ -60,11 +61,15 @@ export async function loadBodyMap(base, entry) {
   let s = 0, n = 0;
   const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
   const all = [];
+  let sat = 0;
   for (let i = 0; i < d.length; i += 4) {
+    sat += Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]);
     const l = 0.2126 * lin(d[i]) + 0.7152 * lin(d[i + 1]) + 0.0722 * lin(d[i + 2]);
     if (l > 0.0006) { s += l; n++; all.push(Math.max(lin(d[i]), lin(d[i + 1]), lin(d[i + 2]))); }
   }
   all.sort((x, y) => x - y);
   const p99 = all.length ? all[Math.floor(all.length * 0.99)] : 1;
-  return { tex, mean: n ? s / n : 0.5, p99 };
+  // single-band mosaics (stored as gray RGB) get the body's colours in the shader
+  const gray = sat / (d.length / 4) < 1.5;
+  return { tex, mean: n ? s / n : 0.5, p99, gray };
 }

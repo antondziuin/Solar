@@ -1,4 +1,21 @@
 {
+ "amalthea": {
+  "dem": {
+   "file": "bodies/amalthea_dem.png",
+   "radius": 68173.80271065027,
+   "width": 360,
+   "height": 180,
+   "source": "Stooke small-body shape model (NASA PDS), via Celestia",
+   "shape": true,
+   "scale": 3
+  },
+  "map": {
+   "file": "bodies/amalthea_map.jpg",
+   "width": 1024,
+   "height": 512,
+   "source": "Celestia (ItzImcool, CC-BY-4.0), reprojected Galileo imagery"
+  }
+ },
  "ariel": {
   "map": {
    "file": "bodies/ariel_map.jpg",
@@ -31,11 +48,13 @@
   }
  },
  "deimos": {
-  "map": {
-   "file": "bodies/deimos_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+  "dem": {
+   "file": "bodies/deimos_dem.png",
+   "radius": 5733.4781428709975,
+   "width": 360,
+   "height": 180,
+   "source": "Ernst et al. 2023 (CC-BY-4.0), via Celestia",
+   "shape": true
   }
  },
  "dione": {
@@ -75,6 +94,17 @@
    "width": 2048,
    "height": 1024,
    "source": "USGS Astrogeology: Ganymede_Voyager_GalileoSSI_Global_ClrMosaic_1435m.tif"
+  }
+ },
+ "hyperion": {
+  "dem": {
+   "file": "bodies/hyperion_dem.png",
+   "radius": 146481.81135878514,
+   "width": 360,
+   "height": 180,
+   "source": "Thomas et al., Saturn Small Moon Shape Models V1.0 (NASA PDS), via Celestia",
+   "shape": true,
+   "scale": 2
   }
  },
  "iapetus": {
@@ -199,6 +229,17 @@
    "width": 720,
    "height": 360,
    "source": "NASA 3D Resources"
+  }
+ },
+ "proteus": {
+  "dem": {
+   "file": "bodies/proteus_dem.png",
+   "radius": 200714.60674590291,
+   "width": 360,
+   "height": 180,
+   "source": "Stooke small-body shape model (NASA PDS), via Celestia",
+   "shape": true,
+   "scale": 2
   }
  },
  "rhea": {

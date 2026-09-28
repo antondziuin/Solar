@@ -77,11 +77,15 @@ chunks are generated entirely on the GPU:
   altimetry and stereo are baked from the USGS Astrogeology archive and loaded when a body
   first appears: the Moon (Kaguya LALT / LRO LOLA), Mars (MGS MOLA), Mercury (MESSENGER),
   Pluto and Charon (New Horizons, encounter hemispheres), Enceladus (Cassini shape model) and
-  Phobos, whose real, lumpy shape comes from the Mars Express HRSC model. Global maps from
+  Phobos, whose real, lumpy shape comes from the Mars Express HRSC model. The irregular moons
+  Amalthea, Proteus (Stooke, Voyager/Galileo), Hyperion (Thomas et al., Cassini) and Deimos
+  (Ernst et al. 2023) use real plate shape models, ray-cast into radius maps; Amalthea also
+  gets its Galileo map through the model's own texture coordinates. Global maps from
   Clementine, MESSENGER, Galileo, Voyager, Cassini, New Horizons and Viking give the Moon,
-  Mercury, Mars, Phobos, Deimos, the Galilean moons, Jupiter, Saturn, its icy moons, Titan,
+  Mercury, Mars, Phobos, the Galilean moons, Jupiter, Saturn, its icy moons, Titan,
   the Uranian moons, Triton, Pluto and Charon their real appearance, scaled to each body's
-  measured albedo. Other moons use their IAU triaxial shapes. Where data are missing (e.g. the
+  measured albedo; single-band mosaics (e.g. Europa's Galileo/Voyager mosaic) are coloured with
+  the body's measured colours. Other moons use their IAU triaxial shapes. Where data are missing (e.g. the
   hemispheres Voyager and New Horizons never saw), the procedural surface takes over. The Moon
   uses a lunar albedo map for its maria. Named landmarks are modelled geometrically:
   Olympus Mons and the Tharsis volcanoes, Valles Marineris, Hellas, the Martian dichotomy,
@@ -95,7 +99,7 @@ chunks are generated entirely on the GPU:
 
 | Input | Action |
 |---|---|
-| Drag | Orbit / move over the surface |
+| Drag | Orbit / move over the surface (speed: *Settings → Mouse speed*) |
 | Right-drag, Shift-drag | Look around (tilt up to the horizon) |
 | Wheel, pinch, `+` `−` | Zoom (altitude above the terrain) |
 | Double-click, label, list | Fly to a body |
@@ -130,6 +134,11 @@ public/         runtime assets produced by scripts/build_assets.py
   map products (public domain, from NASA/JAXA/ESA mission data: LRO, Kaguya, MGS, MESSENGER,
   New Horizons, Cassini, Mars Express, Galileo, Voyager, Clementine). Rebuild with
   `python3 scripts/build_body_maps.py` (needs `rasterio`; only the needed scanlines are fetched).
+- Shape models of Amalthea and Proteus (P. Stooke, Small Body Shape Models, NASA PDS), Hyperion
+  (Thomas, Joseph & Ansty, Saturn Small Moon Shape Models V1.0, NASA PDS, CC0), Deimos
+  (Ernst et al. 2023, Earth Planets Space, CC-BY-4.0) and the Amalthea map (ItzImcool, CC-BY-4.0),
+  as distributed with [CelestiaContent](https://github.com/CelestiaProject/CelestiaContent).
+  Rebuild with `python3 scripts/build_shape_models.py`.
 - Global maps of other moons: [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) (public domain).
 - Lunar albedo map (fallback): [CesiumJS](https://github.com/CesiumGS/cesium) (Apache-2.0).
 - Ephemerides: [Astronomy Engine](https://github.com/cosinekitty/astronomy) (MIT).

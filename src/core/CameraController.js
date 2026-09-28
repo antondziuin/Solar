@@ -24,6 +24,7 @@ export class CameraController {
     this.t = { ...this.s };
     this.fly = null;
     this.minAlt = 1.8;
+    this.sensitivity = 1; // user multiplier (Settings -> Mouse speed)
     this._pointers = new Map();
     this._bind();
   }
@@ -144,11 +145,11 @@ export class CameraController {
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
       const k = e.deltaMode === 1 ? 40 : 1;
-      this.zoom(e.deltaY * k * 0.0012);
+      this.zoom(e.deltaY * k * 0.0022 * Math.sqrt(this.sensitivity));
     }, { passive: false });
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-      const step = 30;
+      const step = 15;
       switch (e.key) {
         case 'ArrowLeft': this.drag(step, 0); break;
         case 'ArrowRight': this.drag(-step, 0); break;
@@ -170,7 +171,9 @@ export class CameraController {
     if (!this.focus || this.fly) return;
     const view = this.app.views[this.focus.id];
     const r = this.t.alt + view.model.R;
-    const scale = this.app.pixelAngle * Math.max(this.t.alt, this.minAlt) / r * 1.1;
+    // angle of one CSS pixel (independent of device pixel ratio and dynamic resolution)
+    const cssPixelAngle = this.app.pixelAngle * this.app.pixelRatio;
+    const scale = cssPixelAngle * Math.max(this.t.alt, this.minAlt) / r * 2.2 * this.sensitivity;
     const psi = this.t.heading;
     const dN = (dy * Math.cos(psi) + dx * Math.sin(psi)) * scale;
     const dE = (dy * Math.sin(psi) - dx * Math.cos(psi)) * scale;
@@ -180,8 +183,9 @@ export class CameraController {
 
   look(dx, dy) {
     if (this.fly) return;
-    this.t.heading += dx * 0.004;
-    this.t.pitch = Math.max(0, Math.min(Math.PI / 2 + 0.35, this.t.pitch + dy * 0.004));
+    const k = 0.008 * this.sensitivity;
+    this.t.heading += dx * k;
+    this.t.pitch = Math.max(0, Math.min(Math.PI / 2 + 0.35, this.t.pitch + dy * k));
   }
 
   zoom(amount) {

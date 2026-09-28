@@ -45,12 +45,30 @@ uniform float uDemTexelM;         // DEM texel size at the equator (m)
 uniform sampler2D uBodyMap;       // surface colour map (sRGB); black = no data
 uniform float uHasMap;
 uniform float uMapGain;           // scales the map to the body's measured albedo
+uniform vec2 uMapGray;            // grayscale map: (tint strength, mean luminance of the map)
 uniform vec3 uSeedVec;
 
 ${NOISE_GLSL}
 
 vec2 dirToUV(vec3 d) {
   return vec2(atan(d.y, d.x) * (0.5 / PI) + 0.5, asin(clamp(d.z, -1.0, 1.0)) / PI + 0.5);
+}
+
+// Map lookup: when magnified, a cubic B-spline (4 bilinear taps) hides the texel grid and
+// the JPEG block pattern that plain bilinear filtering would show as a regular tiling.
+vec3 sampleMap(vec2 uv, float lod) {
+  if (lod > 0.75) return textureLod(uBodyMap, uv, lod).rgb;
+  vec2 sz = vec2(textureSize(uBodyMap, 0));
+  vec2 p = uv * sz - 0.5, f = fract(p), i = p - f;
+  vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f * f - 3.0 * f * f * f) / 6.0;
+  vec2 w3 = f * f * f / 6.0;
+  vec2 g0 = w0 + w1, g1 = w2 + w3;
+  vec2 h0 = (i - 0.5 + w1 / g0) / sz, h1 = (i + 1.5 + w3 / g1) / sz;
+  vec3 c = g0.y * (g0.x * textureLod(uBodyMap, vec2(h0.x, h0.y), 0.0).rgb + g1.x * textureLod(uBodyMap, vec2(h1.x, h0.y), 0.0).rgb)
+         + g1.y * (g0.x * textureLod(uBodyMap, vec2(h0.x, h1.y), 0.0).rgb + g1.x * textureLod(uBodyMap, vec2(h1.x, h1.y), 0.0).rgb);
+  return mix(c, textureLod(uBodyMap, uv, lod).rgb, smoothstep(0.25, 0.75, lod));
 }
 
 // fractal detail is tapered above gLamTop (where real elevation data takes over)
@@ -166,6 +184,7 @@ float featureHeight(vec3 dir) {
   return h;
 }
 
+float gH0 = 0.0; // height from the elevation data alone (no fractal)
 #ifdef EARTH
 // ---- real elevation: global base map + camera-centred clipmap of streamed tiles
 uniform highp sampler2D uDemBase;
@@ -219,8 +238,14 @@ float demHeight(vec3 dir, float need, out float res) {
 }
 
 bool isOcean(vec3 dir, float H) {
-  float water = textureLod(uTexA, dirToUV(dir), 0.0).r;
-  return H < 0.0 && (water > 0.5 || H < -25.0);
+  vec2 uv = dirToUV(dir);
+  float water = textureLod(uTexA, uv, 0.0).r;
+  // the coarse water mask misses shallow banks (Bahamas, reefs): water-coloured imagery counts too
+  vec3 bm = textureLod(uTexC, uv, 1.0).rgb;
+  if (bm.b > bm.r * 1.3 && bm.b > bm.g * 0.8) water = 1.0;
+  // shallow shelf seas (Sunda shelf, Yellow Sea, ...): where the data put the sea floor below
+  // sea level, the sub-resolution fractal must not raise sand banks out of the water
+  return (H < 0.0 && (water > 0.5 || H < -25.0)) || (water > 0.5 && gH0 < 0.5);
 }
 #endif
 
@@ -311,6 +336,7 @@ out vec3 vRelSurf;
 out vec3 vRel;
 out vec3 vDir;
 out float vH;
+out float vH0;
 out vec3 vGrad;
 out float vAlb;
 out float vLowOct;
@@ -328,12 +354,15 @@ void main() {
   float alb = 0.0;
   float lowOct = 0.0;
   vDataRes = 1.0;
+  vH0 = 0.0;
 #if defined(MODE_ROCK)
   // deterministic large-scale relief + finite-difference gradient
   float R = uRadii.x;
   gNeed = D * uVertexCut * 0.25;
   gLamTop = uLamTop;
   float h0 = baseHeight(dir);
+  gH0 = h0;
+  vH0 = h0;
   float dataRes = gDataRes;
 #ifdef EARTH
   gLamTop = 2.0 * dataRes;
@@ -409,6 +438,7 @@ in vec3 vRelSurf;
 in vec3 vRel;
 in vec3 vDir;
 in float vH;
+in float vH0;
 in vec3 vGrad;
 in float vAlb;
 in float vLowOct;
@@ -520,8 +550,17 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   float mapValid = 0.0;
   if (uHasMap > 0.5) {
     float lodM = clamp(log2(D * uPixelCut * float(textureSize(uBodyMap, 0).x) / (6.2832 * uRadii.x)), 0.0, 10.0);
-    vec3 m = textureLod(uBodyMap, dirToUV(dir), lodM).rgb;
-    mapValid = smoothstep(0.0006, 0.004, dot(m, vec3(0.3333)));
+    vec3 m = sampleMap(dirToUV(dir), lodM);
+    float ml = dot(m, vec3(0.3333));
+    mapValid = smoothstep(0.0006, 0.003, ml);
+    if (uMapGray.x > 0.0) {
+      // single-band mosaic: colour it with the body's palette (dark terrain -> uColor0 hue,
+      // bright -> uColor1 hue), keeping the measured brightness
+      vec3 t0 = uColor0 / max(dot(uColor0, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+      vec3 t1 = uColor1 / max(dot(uColor1, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+      vec3 tint = mix(t0, t1, smoothstep(0.45, 1.25, ml / uMapGray.y));
+      m = ml * mix(vec3(1.0), tint, uMapGray.x);
+    }
     vec3 mc = m * uMapGain * (0.8 + 0.4 * clamp(0.5 + alb * 2.0, 0.0, 1.0));
     c = mix(c, mc, mapValid);
   }
@@ -554,7 +593,9 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   land = mix(land, vec3(0.82, 0.85, 0.9), snow);
   c = land * (0.9 + 0.35 * alb);
   if (ocean) { // ocean
-    float depth = clamp(-H / 180.0, 0.0, 1.0);
+    // the bottom shows through only the first tens of metres (e-folding ~25 m of coastal water,
+    // light travels down and back); fractal bumps on a data-submerged shelf keep the data depth
+    float depth = 1.0 - exp(-max(max(-H, -0.5 * gH0), 0.0) / 25.0);
     c = mix(vec3(0.03, 0.12, 0.13), vec3(0.008, 0.025, 0.06), depth);
     c = mix(c, vec3(0.75, 0.8, 0.85), smoothstep(1.25, 1.35, abs(lat) + 0.05 * n2) * 0.9); // sea ice
     spec = 1.0;
@@ -594,7 +635,7 @@ vec3 gasColour(vec3 dir, vec3 nrmOut, float D, out vec3 grad) {
     vec2 uv = vec2((lon + uTurbulence * 0.02 * T) / (2.0 * PI) + 0.5, latW / PI + 0.5);
     // explicit LOD: the longitude seam would otherwise select the smallest mip along a line
     float lodG = clamp(log2(D * uPixelCut * float(textureSize(uBodyMap, 0).x) / (6.2832 * uRadii.x)), 0.0, 10.0);
-    vec3 m = textureLod(uBodyMap, uv, lodG).rgb * uMapGain;
+    vec3 m = sampleMap(uv, lodG) * uMapGain;
     c = mix(c, m, smoothstep(0.0006, 0.004, dot(m, vec3(0.3333))));
   }
   c *= 1.0 + uContrast * 0.22 * T;
@@ -665,6 +706,7 @@ void main() {
 #else
 
   float H = vH;
+  gH0 = vH0;
   vec3 Gr = vGrad;
   float alb = vAlb;
 #if defined(MODE_ROCK)
@@ -753,6 +795,20 @@ void main() {
   float slope = length(Gt);
   albedo = rockAlbedo(dir, H, alb, slope, D, spec, lights);
 #endif
+
+  // The interpolated position lies on the flat triangle between vertices, which at coarse LOD
+  // sits tens of km below a giant's cloud tops - comparable to the atmospheric scale height, so
+  // haze and shadows would show the mesh grid. Use the point on the true (curved) surface instead.
+  {
+    float Hs = 0.0;
+#if defined(MODE_ROCK)
+    Hs = H;
+#ifdef EARTH
+    if (isOcean(dir, H)) Hs = 0.0;
+#endif
+#endif
+    pKm = (uRadii * dir + nS * Hs) * 0.001;
+  }
 
   // ---------------------------------------------------------------- lighting
   vec3 sunVis = sunVisibility(pKm);
