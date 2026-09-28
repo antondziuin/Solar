@@ -87,7 +87,12 @@ export class UI {
       }
       nav.appendChild(group);
     }
-    const toggleList = () => nav.classList.toggle('closed');
+    const toggleList = () => {
+      nav.classList.toggle('closed');
+      if (!nav.classList.contains('closed') && window.innerWidth < 720) {
+        this.$('settings').hidden = true; this.$('help').hidden = true; this._syncPopover?.();
+      }
+    };
     this.$('btn-bodies').addEventListener('click', toggleList);
     if (window.innerWidth < 720) nav.classList.add('closed');
     window.addEventListener('keydown', (e) => { if (e.key === 'b' && e.target.tagName !== 'INPUT') toggleList(); });
@@ -194,7 +199,7 @@ export class UI {
       if (e.key === ']') this.$('t-faster').click();
       if (e.key === '[') this.$('t-slower').click();
       if (e.key === 'n') this.$('t-now').click();
-      if (e.key === 'h') this.$('help').hidden = !this.$('help').hidden;
+      if (e.key === 'h') { this.$('help').hidden = !this.$('help').hidden; this.$('settings').hidden = true; this._syncPopover?.(); }
     });
     this._setRate = setRate;
     setRate();
@@ -211,7 +216,15 @@ export class UI {
 
   _bindSettings() {
     const app = this.app;
-    const pop = (btn, id, other) => this.$(btn).addEventListener('click', () => { this.$(id).hidden = !this.$(id).hidden; this.$(other).hidden = true; });
+    const syncPopover = () => document.body.classList.toggle('popover-open', !this.$('settings').hidden || !this.$('help').hidden);
+    this._syncPopover = syncPopover;
+    const pop = (btn, id, other) => this.$(btn).addEventListener('click', () => {
+      this.$(id).hidden = !this.$(id).hidden;
+      this.$(other).hidden = true;
+      // on narrow screens the popover and the body list share the space
+      if (!this.$(id).hidden && window.innerWidth < 720) this.$('bodies').classList.add('closed');
+      syncPopover();
+    });
     pop('btn-settings', 'settings', 'help');
     pop('btn-help', 'help', 'settings');
     const chk = (id, fn) => { const el = this.$(id); el.addEventListener('change', () => fn(el.checked)); fn(el.checked); };
