@@ -104,7 +104,7 @@ def build_earth():
         os.path.join(OUT, "textures/earth_day.jpg"), quality=88)
     # City lights: keep the warm light, drop the blue ocean tint of the source image.
     n = np.asarray(Image.open(os.path.join(img, "earth-night.jpg")).convert("RGB"), np.float32) / 255.0
-    lights = np.clip((n[..., 0] * 1.2 - n[..., 2] * 0.9) * 1.6, 0, 1)
+    lights = np.clip((np.minimum(n[..., 0], n[..., 1]) - 0.10) / 0.45, 0, 1)
     Image.fromarray((lights * 255).astype(np.uint8), "L").save(
         os.path.join(OUT, "textures/earth_lights.jpg"), quality=90)
     water = Image.open(os.path.join(img, "earth-water.png")).convert("L").resize((2048, 1024), Image.BILINEAR)

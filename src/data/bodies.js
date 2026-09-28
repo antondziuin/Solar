@@ -153,10 +153,11 @@ export const BODIES = [
         [32, '#ddd0b6'], [36, '#b39b7c'], [40, '#cabda3'], [45, '#a8977c'], [52, '#b8ab94'], [60, '#9d9485'], [70, '#86817a'], [90, '#78756f'],
       ],
       storms: [
-        { lat: -22.3, lon: 55, rx: 8.0, ry: 5.0, color: '#c0643a', strength: 1.0 }, // Great Red Spot (System III)
-        { lat: -33.5, lon: 150, rx: 2.4, ry: 1.9, color: '#efe8dc', strength: 0.7 }, // Oval BA-like white ovals
-        { lat: -41, lon: 250, rx: 1.4, ry: 1.1, color: '#f0eadf', strength: 0.6 },
-        { lat: -41, lon: 290, rx: 1.3, ry: 1.0, color: '#f0eadf', strength: 0.6 },
+        // longitudes are east-positive in the body frame (System III west longitude negated)
+        { lat: -22.3, lon: -55, rx: 8.0, ry: 5.0, color: '#c0643a', strength: 1.0 }, // Great Red Spot (~55 deg W, drifts)
+        { lat: -33.5, lon: -150, rx: 2.4, ry: 1.9, color: '#efe8dc', strength: 0.7 }, // Oval BA
+        { lat: -41, lon: -250, rx: 1.4, ry: 1.1, color: '#f0eadf', strength: 0.6 },
+        { lat: -41, lon: -290, rx: 1.3, ry: 1.0, color: '#f0eadf', strength: 0.6 },
       ],
     },
     atmosphere: { ms: 0.05, height: 1200, rayleigh: [2.0e-3, 4.6e-3, 11e-3], rayleighH: 27, mie: 0.5e-3, mieExt: 0.6e-3, mieH: 27, g: 0.7 },

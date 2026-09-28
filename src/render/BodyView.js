@@ -43,6 +43,7 @@ export class BodyView {
     }
     if (body.atmosphere) {
       this.atmo = new AtmosphereShell(body);
+      this.atmo.shareEclipse(this.material.uniforms);
       scene.add(this.atmo.mesh);
     }
     if (body.rings) {

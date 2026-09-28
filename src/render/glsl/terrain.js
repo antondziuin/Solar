@@ -3,6 +3,7 @@
 // loss of precision at any distance or zoom level.
 import { NOISE_GLSL } from './noise.js';
 import { ATMOSPHERE_GLSL } from './atmosphere.js';
+import { ECLIPSE_GLSL } from './eclipse.js';
 
 export const MAX_OCTAVES = 44;
 export const MAX_FEATURES = 12;
@@ -342,18 +343,14 @@ void main() {
 export const TERRAIN_FRAG = /* glsl */ `
 ${COMMON}
 ${ATMOSPHERE_GLSL}
+${ECLIPSE_GLSL}
 
 uniform vec3 uSunDir;        // body frame, unit, towards the sun
-uniform vec3 uSunPos;        // sun centre relative to body centre (km, body frame)
-uniform float uSunRadius;    // km
 uniform vec3 uSunIrr;        // solar irradiance at the body (display units)
 uniform vec3 uColor0, uColor1, uColor2;
 uniform float uAlbedoNoise;
 uniform vec4 uPolarCap;      // rgb, latitude (deg); negative latitude => none
 uniform float uPolarSoft;
-uniform vec4 uOcc[MAX_OCC];  // occluder centre (km, body frame, rel. body centre), radius km
-uniform vec3 uOccTint[MAX_OCC];
-uniform int uOccCount;
 uniform vec3 uShine;         // planetshine irradiance (body frame direction * intensity)
 uniform vec3 uShineColor;
 uniform float uAmbient;      // artistic minimum light
@@ -380,29 +377,6 @@ in float vDataRes;
 #include <logdepthbuf_pars_fragment>
 
 float muS_(vec3 d, vec3 L) { return dot(d, L); }
-
-// visible fraction of the solar disc from point p (km, body frame)
-vec3 sunVisibility(vec3 p) {
-  vec3 vis = vec3(1.0);
-  vec3 S = uSunPos - p;
-  float ds = length(S);
-  float as = uSunRadius / ds;
-  for (int i = 0; i < MAX_OCC; i++) {
-    if (i >= uOccCount) break;
-    vec3 O = uOcc[i].xyz - p;
-    float dO = length(O);
-    if (dO > ds) continue;
-    float ao = uOcc[i].w / dO;
-    float sep = acos(clamp(dot(S, O) / (ds * dO), -1.0, 1.0));
-    if (sep > as + ao) continue;
-    float cover = min(1.0, (ao * ao) / (as * as));
-    float f = clamp((as + ao - sep) / (2.0 * min(as, ao)), 0.0, 1.0);
-    f = f * f * (3.0 - 2.0 * f);
-    float occl = f * cover;
-    vis *= mix(vec3(1.0), uOccTint[i], occl);
-  }
-  return vis;
-}
 
 float ringShadow(vec3 pKm, vec3 L) {
   if (uRingRange.y <= 0.0 || abs(L.z) < 1e-4) return 1.0;
@@ -536,7 +510,7 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
     spec = 1.0;
   }
   lights = textureLod(uTexD, uv, lod).r;
-  lights *= lights * (ocean ? 0.0 : 1.0);
+  lights = pow(lights, 1.6) * (ocean ? 0.0 : 1.0);
 #endif
   return c;
 }
@@ -789,7 +763,7 @@ void main() {
   {
     float night = smoothstep(0.08, -0.12, muS);
     float clOver = texture(uTexE, dirToUV(dir)).r;
-    radiance += vec3(1.0, 0.7, 0.38) * lights * night * 0.006 * uExposure * (1.0 - 0.8 * clOver);
+    radiance += vec3(1.0, 0.72, 0.42) * lights * night * 0.02 * uExposure * (1.0 - 0.75 * clOver);
   }
 #endif
   radiance += albedo * uAmbient * 0.02;
@@ -805,7 +779,7 @@ void main() {
     if (ts.y > 0.0 && tEnd > t0) {
       vec3 tr;
       vec3 ins = atmoScatter(ro, rd, t0, tEnd, LS, tr);
-      radiance = radiance * tr + ins * uSunIrr;
+      radiance = radiance * tr + ins * uSunIrr * sunVis;
     }
   }
 #endif

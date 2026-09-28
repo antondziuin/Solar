@@ -2,6 +2,7 @@
 // where no surface was drawn (sky from the ground, limb from space).
 import * as THREE from 'three';
 import { ATMOSPHERE_GLSL } from './glsl/atmosphere.js';
+import { ECLIPSE_GLSL } from './glsl/eclipse.js';
 import { atmosphereUniforms } from './materials.js';
 
 const VERT = /* glsl */ `
@@ -19,6 +20,7 @@ const FRAG = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_fragment>
 ${ATMOSPHERE_GLSL}
+${ECLIPSE_GLSL}
 uniform mat3 uRotInv;
 uniform vec3 uCamPF;   // km, body frame
 uniform vec3 uSunDir;  // body frame
@@ -39,6 +41,9 @@ void main() {
   if (tg.x > 0.0) t1 = min(t1, tg.x);
   vec3 tr;
   vec3 ins = atmoScatter(ro, rd, t0, t1, L, tr);
+  // eclipses: evaluate the solar disc visibility near the ray's entry into the air
+  vec3 pv = (ro + rd * mix(t0, t1, 0.25)) / uAtmoScale;
+  ins *= sunVisibility(pv);
   float a = 1.0 - dot(tr, vec3(0.3333));
   gl_FragColor = vec4(ins * uSunIrr, clamp(a, 0.0, 1.0));
 }`;
@@ -58,6 +63,11 @@ export class AtmosphereShell {
       uSunDir: { value: new THREE.Vector3() },
       uSunIrr: { value: new THREE.Vector3() },
       uExposureComp: { value: 1 },
+      uSunPos: { value: new THREE.Vector3() },
+      uSunRadius: { value: 695700 },
+      uOcc: { value: [] },
+      uOccTint: { value: [] },
+      uOccCount: { value: 0 },
     });
     this.material = new THREE.ShaderMaterial({
       vertexShader: VERT,
@@ -80,8 +90,21 @@ export class AtmosphereShell {
     this._m4 = new THREE.Matrix4();
   }
 
+  /** Share the eclipse uniforms of the body's surface material. */
+  shareEclipse(U) {
+    const A = this.material.uniforms;
+    A.uSunPos.value = U.uSunPos.value;
+    A.uOcc.value = U.uOcc.value;
+    A.uOccTint.value = U.uOccTint.value;
+    this._surfaceU = U;
+  }
+
   /** relCam: body centre relative to camera (world); rot: body->world Matrix3 */
   update(relCam, rot, rotInv, camPF, sunDirPF, sunIrr) {
+    if (this._surfaceU) {
+      this.material.uniforms.uOccCount.value = this._surfaceU.uOccCount.value;
+      this.material.uniforms.uSunRadius.value = this._surfaceU.uSunRadius.value;
+    }
     const R = this.topKm * 1000 * 1.003; // faceting margin
     const e = rot.elements;
     // columns scaled by radii (sphere geometry is Y-up; map geometry z -> body z)
