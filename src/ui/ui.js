@@ -45,6 +45,9 @@ export class UI {
     this._bindTime();
     this._bindSettings();
     this._lastInfo = 0;
+    const info = this.$('info');
+    if (window.innerWidth < 720) info.classList.add('collapsed');
+    info.addEventListener('click', () => info.classList.toggle('collapsed'));
   }
 
   _dotColor(b) {
@@ -241,7 +244,7 @@ export class UI {
   updateInfo(now) {
     if (now - this._lastInfo < 500) return;
     this._lastInfo = now;
-    const b = this.app.controller.focus;
+    const b = this.app.controller.fly?.body || this.app.controller.focus;
     if (!b) return;
     const eph = this.app.ephem;
     const parent = b.parent ? eph.byId[b.parent] : null;

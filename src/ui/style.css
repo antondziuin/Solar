@@ -85,6 +85,9 @@ canvas#view:active { cursor: grabbing; }
 #info td:first-child { color: var(--fg-faint); width: 46%; }
 #info td:last-child { font-family: var(--mono); font-size: 12px; text-align: right; }
 #info.collapsed table, #info.collapsed p { display: none; }
+#info { cursor: pointer; }
+#info .type::after { content: " · details"; color: var(--fg-faint); }
+#info:not(.collapsed) .type::after { content: ""; }
 
 /* time bar */
 #timebar {
@@ -144,7 +147,9 @@ canvas#view:active { cursor: grabbing; }
 @media (max-width: 720px) {
   #hud-title { left: 62px; top: 14px; }
   #focus-name { font-size: 20px; }
-  #info { top: auto; bottom: 150px; left: 16px; right: 16px; width: auto; max-height: 30vh; }
+  #info { top: auto; bottom: 140px; left: 16px; right: 16px; width: auto; max-height: 40vh; padding: 10px 14px; }
+  #info h2 { font-size: 15px; }
+  #info .type { margin-bottom: 0; }
   #bodies { width: calc(100vw - 32px); max-height: 50vh; }
   #timebar { left: 16px; right: 16px; transform: none; }
   .tb-row { flex-wrap: wrap; justify-content: center; }
