@@ -114,6 +114,14 @@ export class BodyView {
         // match the mean albedo, but never push the brightest terrain above ~0.95
         U.uMapGain.value = Math.min(target / Math.max(m.mean, 1e-3), 0.95 / Math.max(m.p99, 1e-3));
         if (m.gray && this.mode !== 'gas') U.uMapGray.value.set(b.surface.mapTint ?? 0.6, Math.max(m.mean, 1e-3));
+        if (this.mode !== 'gas') {
+          // where the map has no data (never imaged), the procedural surface continues at the
+          // same mean brightness, so the coverage boundary does not show as a bright/dark step
+          const c0 = U.uColor0.value, c1 = U.uColor1.value;
+          const lum = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+          const k = (U.uMapGain.value * m.mean) / Math.max(0.5 * (lum(c0) + lum(c1)), 1e-3);
+          c0.multiplyScalar(k); c1.multiplyScalar(k);
+        }
       }));
     }
     try { await Promise.all(jobs); } catch (e) { console.warn('body data', b.id, e); }

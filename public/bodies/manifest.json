@@ -27,9 +27,9 @@
  "callisto": {
   "map": {
    "file": "bodies/callisto_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif"
   }
  },
  "charon": {
@@ -83,9 +83,9 @@
  "europa": {
   "map": {
    "file": "bodies/europa_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Europa_Voyager_GalileoSSI_global_mosaic_500m.tif"
   }
  },
  "ganymede": {

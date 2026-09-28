@@ -73,6 +73,9 @@ JOBS = [
 
 # surface maps whose polar rows are unusable (treated as no data -> procedural colour)
 MAP_LAT_LIMIT = {"moon": 77.0}
+# colour mosaics patched with grayscale frames (Ganymede's north): keep the brightness only,
+# the viewer colours single-band maps with the body's palette
+GRAY_MAPS = {"ganymede", "triton"}  # Triton: Voyager colour mosaic has a green cast
 
 # DEMs whose heights are relative to an equipotential surface close to the body's ellipsoid
 ELLIPSOID_DEMS = {"mars"}
@@ -174,6 +177,8 @@ def save_map(bid, img, ok):
     img = np.asarray(img, np.float32)
     if img.ndim == 2:
         img = img[..., None].repeat(3, -1)
+    if bid in GRAY_MAPS:
+        img = (img * np.array([0.2126, 0.7152, 0.0722], np.float32)).sum(-1, keepdims=True).repeat(3, -1)
     ok2 = ok if ok.ndim == 2 else ok.all(0)
     if bid in MAP_LAT_LIMIT:
         lat = 90.0 - 180.0 * (np.arange(ok2.shape[0]) + 0.5) / ok2.shape[0]
@@ -189,6 +194,10 @@ def save_map(bid, img, ok):
         fill = ~ok2 & (cnt >= 3)
         img[fill] = acc[fill] / cnt[fill][:, None]
         ok2 = ok2 | fill
+    # mosaic rims are often darkened or smeared: trim 2 px along large gaps
+    if ok2.mean() < 0.97:
+        for _ in range(2):
+            ok2 = ok2 & np.roll(ok2, 1, 0) & np.roll(ok2, -1, 0) & np.roll(ok2, 1, 1) & np.roll(ok2, -1, 1)
     # polar gaps (never imaged): the mean tone of the latitude row (or the nearest covered one)
     # instead of a patchwork of map and procedural surface
     H = ok2.shape[0]
