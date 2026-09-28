@@ -1,0 +1,7 @@
+{
+ "file": "bodies/mercury_dem.png",
+ "radius": 2439400,
+ "width": 4096,
+ "height": 2048,
+ "source": "USGS Astrogeology: Mercury_Messenger_USGS_DEM_Global_665m_v2.tif"
+}

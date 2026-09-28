@@ -5,6 +5,7 @@ import { createSurfaceMaterial, linColor } from './materials.js';
 import { AtmosphereShell } from './Atmosphere.js';
 import { RingView } from './Rings.js';
 import { MAX_OCTAVES, MAX_OCCLUDERS } from './glsl/terrain.js';
+import { loadBodyDem, loadBodyMap } from '../core/bodyAssets.js';
 
 export const SUN_COLOR = new THREE.Vector3(1.0, 0.97, 0.94);
 const GRID_N = 32;
@@ -28,6 +29,7 @@ export class BodyView {
       splitK: SPLIT_K,
       horizonCull: true,
       model,
+      boundMargin: body.id === 'earth' ? 250 : 0,
     });
     this.lod.mesh.renderOrder = 1;
     this.lod.mesh.name = body.id;
@@ -38,7 +40,7 @@ export class BodyView {
       const radii = model.radii.map((r) => r + alt);
       this.cloudMaterial = createSurfaceMaterial({ ...body, surface: { ...body.surface, special: 'clouds' } }, model, 'clouds', textures, { radii });
       this.cloudMaterial.uniforms.uCamOff.value = this.material.uniforms.uCamOff.value;
-      this.cloudLod = new SphereLOD({ radii, maxRelief: 0, material: this.cloudMaterial, gridN: 24, splitK: 1.2, horizonCull: true });
+      this.cloudLod = new SphereLOD({ radii, maxRelief: 0, material: this.cloudMaterial, gridN: 24, splitK: 1.2, horizonCull: true, thinSkirts: true });
       this.cloudLod.mesh.renderOrder = 3;
       scene.add(this.cloudLod.mesh);
     }
@@ -71,6 +73,49 @@ export class BodyView {
     this.pixelRadius = 0;
     this.groundH = 0;
     this.visible = false;
+    this.assets = null; // manifest entry: real DEM / surface map, loaded when first needed
+    this._assetsRequested = false;
+  }
+
+  /** Load the body's real elevation model and surface map (once, when it is first seen). */
+  async loadAssets(base) {
+    this._assetsRequested = true;
+    const a = this.assets;
+    if (!a) return;
+    const U = this.material.uniforms;
+    const b = this.body;
+    const jobs = [];
+    if (a.dem && this.model.kind === 'rock') {
+      jobs.push(loadBodyDem(base, a.dem).then((dem) => {
+        if (a.dem.ellipsoid) dem.radius = this.model.radii[0]; // heights above the reference ellipsoid
+        this.model.setBodyDem(dem, !!a.dem.ellipsoid);
+        U.uBodyDem.value = dem.tex;
+        U.uHasDem.value = 1;
+        U.uDemTexelM.value = dem.texelM;
+        U.uRadii.value.set(...this.model.radii);
+        U.uFeatCount.value = 0;
+        this.lod.refreshBounds(this.model.radii, this.model.maxRelief);
+      }));
+    }
+    if (a.map) {
+      jobs.push(loadBodyMap(base, a.map).then((m) => {
+        // scale the photometric map to the measured albedo (gas giants: to the band model)
+        let target;
+        if (this.mode === 'gas') {
+          const bands = b.surface.bands.map(([, hex]) => linColor(hex));
+          target = bands.reduce((s, c) => s + 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, 0) / bands.length;
+          U.uStormCount.value = 0; // the real map already shows the storms
+        } else {
+          // geometric albedo includes the opposition surge; the diffuse albedo is ~0.8 of it
+          target = Math.min(0.9, Math.max(0.04, (b.albedo || 0.3) * 0.8));
+        }
+        U.uBodyMap.value = m.tex;
+        U.uHasMap.value = 1;
+        // match the mean albedo, but never push the brightest terrain above ~0.95
+        U.uMapGain.value = Math.min(target / Math.max(m.mean, 1e-3), 0.95 / Math.max(m.p99, 1e-3));
+      }));
+    }
+    try { await Promise.all(jobs); } catch (e) { console.warn('body data', b.id, e); }
   }
 
   setVisible(v) {
@@ -115,6 +160,7 @@ export class BodyView {
     const R = this.model.R;
     this.pixelRadius = R / Math.max(this.distance, 1) / ctx.pixelAngle;
     this.visible = this.pixelRadius > 0.6 && ctx.cameraFacing(this.relCam, R * 1.5 + (b.rings ? this.rings.outer : 0));
+    if (!this._assetsRequested && this.assets && (this.pixelRadius > 3 || ctx.focusId === b.id)) this.loadAssets(ctx.base);
     if (!this.visible) { this.setVisible(false); return; }
 
     // sun geometry

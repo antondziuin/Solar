@@ -1,0 +1,7 @@
+{
+ "file": "bodies/pluto_dem.png",
+ "radius": 1188300,
+ "width": 2048,
+ "height": 1024,
+ "source": "USGS Astrogeology: Pluto_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif"
+}

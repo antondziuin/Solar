@@ -73,6 +73,10 @@ export class Markers {
       }
       const lum = (c.r + c.g + c.b) / 3 || 1;
       let disp = I * ctx.exposure;
+      // The Sun is drawn in display units (like its disc, which is capped at 60): the point
+      // carries the energy of the sub-pixel disc, but is not scaled by the auto exposure,
+      // which grows with distance and would otherwise flood the whole frame with glare.
+      if (b.type === 'star') disp = Math.min(60, Math.max(2, (60 * omega) / pix));
       // keep every body at least faintly visible
       disp = Math.max(disp, ctx.markerFloor);
       const size = Math.min(10, 2.5 + Math.log2(1 + disp) * 1.2) * ctx.pixelRatio;

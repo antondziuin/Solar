@@ -72,7 +72,17 @@ chunks are generated entirely on the GPU:
   adds detail *below* the resolution of the data actually in use at each point, so Mont Blanc
   and Everest are where they should be, and the coastline turns fractal only below ~30 m.
   Streaming falls back to the built-in map when offline.
-- **Real imagery.** NASA Blue Marble colour, land/sea mask, clouds and city lights. The Moon
+- **Real imagery.** NASA Blue Marble colour, land/sea mask, clouds and city lights.
+- **Real shapes and surfaces of other worlds.** Global elevation models from spacecraft
+  altimetry and stereo are baked from the USGS Astrogeology archive and loaded when a body
+  first appears: the Moon (Kaguya LALT / LRO LOLA), Mars (MGS MOLA), Mercury (MESSENGER),
+  Pluto and Charon (New Horizons, encounter hemispheres), Enceladus (Cassini shape model) and
+  Phobos, whose real, lumpy shape comes from the Mars Express HRSC model. Global maps from
+  Clementine, MESSENGER, Galileo, Voyager, Cassini, New Horizons and Viking give the Moon,
+  Mercury, Mars, Phobos, Deimos, the Galilean moons, Jupiter, Saturn, its icy moons, Titan,
+  the Uranian moons, Triton, Pluto and Charon their real appearance, scaled to each body's
+  measured albedo. Other moons use their IAU triaxial shapes. Where data are missing (e.g. the
+  hemispheres Voyager and New Horizons never saw), the procedural surface takes over. The Moon
   uses a lunar albedo map for its maria. Named landmarks are modelled geometrically:
   Olympus Mons and the Tharsis volcanoes, Valles Marineris, Hellas, the Martian dichotomy,
   South Pole–Aitken, Imbrium, Orientale, Tycho, Copernicus, Caloris, Herschel on Mimas,
@@ -116,7 +126,12 @@ public/         runtime assets produced by scripts/build_assets.py
   The bundled base map is rebuilt with `python3 scripts/build_earth_dem.py`.
 - Earth imagery (NASA Blue Marble / Black Marble, topography, water mask, clouds): NASA
   Visible Earth (public domain), as packaged in [three-globe](https://github.com/vasturiano/three-globe) (MIT).
-- Lunar albedo map: [CesiumJS](https://github.com/CesiumGS/cesium) (Apache-2.0).
+- Planetary elevation models and mosaics: [USGS Astrogeology Science Center](https://astrogeology.usgs.gov/)
+  map products (public domain, from NASA/JAXA/ESA mission data: LRO, Kaguya, MGS, MESSENGER,
+  New Horizons, Cassini, Mars Express, Galileo, Voyager, Clementine). Rebuild with
+  `python3 scripts/build_body_maps.py` (needs `rasterio`; only the needed scanlines are fetched).
+- Global maps of other moons: [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) (public domain).
+- Lunar albedo map (fallback): [CesiumJS](https://github.com/CesiumGS/cesium) (Apache-2.0).
 - Ephemerides: [Astronomy Engine](https://github.com/cosinekitty/astronomy) (MIT).
 - Orbital elements: JPL Solar System Dynamics, planetary satellite mean elements.
 

@@ -95,7 +95,8 @@ export class CameraController {
       return;
     }
     this.fly = {
-      body, t: 0,
+      body, t: 0, e: 0,
+      from: this.focus,
       startPos: this.position.clone(),
       startRel: this.position.clone().sub(body.state.pos),
       startQuat: this.camera.quaternion.clone(),
@@ -266,6 +267,7 @@ export class CameraController {
     const f = this.fly;
     f.t = Math.min(1, f.t + dt / f.dur);
     const e = ease(f.t);
+    f.e = e;
     const body = f.body;
     const R = this.app.views[body.id].model.R;
     const F = this.frame(body, false, _m);

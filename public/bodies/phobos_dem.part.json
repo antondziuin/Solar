@@ -1,0 +1,7 @@
+{
+ "file": "bodies/phobos_dem.png",
+ "radius": 11100,
+ "width": 720,
+ "height": 360,
+ "source": "USGS Astrogeology: Phobos_ME_HRSC_DEM_Global_2ppd.tif"
+}

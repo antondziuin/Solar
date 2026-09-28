@@ -99,6 +99,11 @@ class App {
       this.views[b.id] = new BodyView(b, model, this.textures, this.scene);
     }
     this.viewList = BODIES.map((b) => this.views[b.id]);
+    // real elevation models and surface maps (loaded per body when it is first seen)
+    try {
+      const manifest = await fetch(`${BASE}bodies/manifest.json`).then((r) => r.json());
+      for (const [id, entry] of Object.entries(manifest)) if (this.views[id]) this.views[id].assets = entry;
+    } catch (e) { console.warn('no body data manifest', e); }
 
     this.sky = new Sky();
     setText('Loading 41 000 stars…');
@@ -115,7 +120,7 @@ class App {
     const mainPass = new RenderPass(this.scene, this.camera);
     mainPass.clear = false;
     mainPass.clearDepth = true;
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), this.settings.bloom, 0.55, 0.9);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), this.settings.bloom, 0.55, 1.3);
     this.composer.addPass(skyPass);
     this.composer.addPass(mainPass);
     this.composer.addPass(this.bloom);
@@ -157,7 +162,7 @@ class App {
     Object.assign(c.s, { lon: lon * D, lat: lat * D, alt, heading: heading * D, pitch: pitch * D });
     Object.assign(c.t, c.s);
     this.ui.setActive(b);
-    this.exposure = 5.0 * (Math.max(b.state.pos.length(), 0.25 * AU) / AU) ** 2 * 2 ** this.settings.ev;
+    this.exposure = this._exposureFor(b);
   }
 
   setDetail(v) {
@@ -203,12 +208,25 @@ class App {
     if (best && best !== this.controller.focus) this.controller.focusOn(best);
   }
 
-  _autoExposure(dt) {
-    const f = this.controller.focus;
+  /** Exposure that makes a sunlit surface of `body` look right (eye adaptation). */
+  _exposureFor(body) {
     let d;
-    if (!f || f.type === 'star') d = Math.max(this.controller.position.length(), 0.25 * AU);
-    else d = f.state.pos.length();
-    const target = 5.0 * (d / AU) ** 2 * 2 ** this.settings.ev;
+    if (!body || body.type === 'star') d = Math.max(this.controller.position.length(), 0.25 * AU);
+    else d = body.state.pos.length();
+    // partial adaptation to the body's brightness (dark Mercury, dazzling Enceladus)
+    const adapt = body && body.type !== 'star' ? Math.min(1.6, Math.max(0.6, Math.sqrt(0.3 / (body.albedo || 0.3)))) : 1;
+    return 5.0 * (d / AU) ** 2 * adapt * 2 ** this.settings.ev;
+  }
+
+  _autoExposure(dt) {
+    const fly = this.controller.fly;
+    if (fly) {
+      // adapt along the flight, so nothing changes after arrival
+      const a = Math.log(this._exposureFor(fly.from)), b = Math.log(this._exposureFor(fly.body));
+      this.exposure = Math.exp(a + (b - a) * fly.e);
+      return;
+    }
+    const target = this._exposureFor(this.controller.focus);
     const k = 1 - Math.exp(-dt * 2.5);
     this.exposure = Math.exp(Math.log(this.exposure) + (Math.log(target) - Math.log(this.exposure)) * k);
   }
@@ -291,6 +309,7 @@ class App {
       camPos, frustum, pixelAngle: this.pixelAngle, pixelRatio: this.pixelRatio, exposure: this.exposure,
       time: now / 1000, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
+      base: BASE, focusId: (this.controller.fly?.body || this.controller.focus)?.id,
       invViewProj: this._invViewProj, resolution: this._resolution,
       cameraFacing: (rel, r) => { sphere.center.copy(rel); sphere.radius = r; return frustum.intersectsSphere(sphere); },
     };

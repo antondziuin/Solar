@@ -1,0 +1,260 @@
+{
+ "ariel": {
+  "map": {
+   "file": "bodies/ariel_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "callisto": {
+  "map": {
+   "file": "bodies/callisto_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "charon": {
+  "dem": {
+   "file": "bodies/charon_dem.png",
+   "radius": 606000,
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Charon_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif"
+  },
+  "map": {
+   "file": "bodies/charon_map.jpg",
+   "width": 720,
+   "height": 360,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "deimos": {
+  "map": {
+   "file": "bodies/deimos_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "dione": {
+  "map": {
+   "file": "bodies/dione_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "enceladus": {
+  "dem": {
+   "file": "bodies/enceladus_dem.png",
+   "radius": 251500,
+   "width": 720,
+   "height": 360,
+   "source": "USGS Astrogeology: enceladus_2019pm_radius.tif"
+  },
+  "map": {
+   "file": "bodies/enceladus_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "europa": {
+  "map": {
+   "file": "bodies/europa_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "ganymede": {
+  "map": {
+   "file": "bodies/ganymede_map.jpg",
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Ganymede_Voyager_GalileoSSI_Global_ClrMosaic_1435m.tif"
+  }
+ },
+ "iapetus": {
+  "map": {
+   "file": "bodies/iapetus_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "io": {
+  "map": {
+   "file": "bodies/io_map.jpg",
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif"
+  }
+ },
+ "jupiter": {
+  "map": {
+   "file": "bodies/jupiter_map.jpg",
+   "width": 2048,
+   "height": 1024,
+   "source": "NASA/JPL/Space Science Institute, Cassini (PIA07782) via USGS"
+  }
+ },
+ "mars": {
+  "dem": {
+   "file": "bodies/mars_dem.png",
+   "radius": 3396190,
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Mars_MGS_MOLA_DEM_mosaic_global_463m.tif",
+   "ellipsoid": true
+  },
+  "map": {
+   "file": "bodies/mars_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "mercury": {
+  "dem": {
+   "file": "bodies/mercury_dem.png",
+   "radius": 2439400,
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Mercury_Messenger_USGS_DEM_Global_665m_v2.tif"
+  },
+  "map": {
+   "file": "bodies/mercury_map.jpg",
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Mercury_MESSENGER_mosaic_global_250m_2013.tif"
+  }
+ },
+ "mimas": {
+  "map": {
+   "file": "bodies/mimas_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "miranda": {
+  "map": {
+   "file": "bodies/miranda_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "moon": {
+  "dem": {
+   "file": "bodies/moon_dem.png",
+   "radius": 1737400,
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Moon_Kaguya_LALT_DEM_global_1895m.cub"
+  },
+  "map": {
+   "file": "bodies/moon_map.jpg",
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Lunar_Clementine_UVVIS_750nm_Global_Mosaic_118m_v2.1.tif"
+  }
+ },
+ "oberon": {
+  "map": {
+   "file": "bodies/oberon_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "phobos": {
+  "dem": {
+   "file": "bodies/phobos_dem.png",
+   "radius": 11100,
+   "width": 720,
+   "height": 360,
+   "source": "USGS Astrogeology: Phobos_ME_HRSC_DEM_Global_2ppd.tif"
+  },
+  "map": {
+   "file": "bodies/phobos_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "pluto": {
+  "dem": {
+   "file": "bodies/pluto_dem.png",
+   "radius": 1188300,
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Pluto_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif"
+  },
+  "map": {
+   "file": "bodies/pluto_map.jpg",
+   "width": 720,
+   "height": 360,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "rhea": {
+  "map": {
+   "file": "bodies/rhea_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "saturn": {
+  "map": {
+   "file": "bodies/saturn_map.jpg",
+   "width": 720,
+   "height": 360,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "tethys": {
+  "map": {
+   "file": "bodies/tethys_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "titan": {
+  "map": {
+   "file": "bodies/titan_map.jpg",
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Titan_ISS_P19658_Mosaic_Global_4km.tif"
+  }
+ },
+ "titania": {
+  "map": {
+   "file": "bodies/titania_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ },
+ "triton": {
+  "map": {
+   "file": "bodies/triton_map.jpg",
+   "width": 2048,
+   "height": 1024,
+   "source": "USGS Astrogeology: Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif"
+  }
+ },
+ "umbriel": {
+  "map": {
+   "file": "bodies/umbriel_map.jpg",
+   "width": 1440,
+   "height": 720,
+   "source": "NASA 3D Resources"
+  }
+ }
+}

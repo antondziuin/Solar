@@ -1,0 +1,8 @@
+{
+ "file": "bodies/mars_dem.png",
+ "radius": 3396190,
+ "width": 4096,
+ "height": 2048,
+ "source": "USGS Astrogeology: Mars_MGS_MOLA_DEM_mosaic_global_463m.tif",
+ "ellipsoid": true
+}

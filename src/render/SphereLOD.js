@@ -58,7 +58,13 @@ export class SphereLOD {
    * @param {object} opts
    *  radii: [a,b,c] metres; maxRelief: metres; material: ShaderMaterial
    */
-  constructor({ radii, maxRelief = 0, material, gridN = 32, maxInstances = 3000, splitK = 1.5, minEdge = 0.15, horizonCull = true, model = null }) {
+  constructor({ radii, maxRelief = 0, material, gridN = 32, maxInstances = 3000, splitK = 1.5, minEdge = 0.15, horizonCull = true, model = null, thinSkirts = false, boundMargin = 0 }) {
+    // thinSkirts: smooth shells (clouds) only need to cover the chord/arc sag between LOD levels;
+    // long skirts on a translucent layer show up as bright walls along chunk borders
+    this.thinSkirts = thinSkirts;
+    // extra bounding margin for data that the CPU only approximates (streamed elevation)
+    this.boundMargin = boundMargin;
+    this._demVersion = -1;
     this.model = model; // optional terrain model: per-node centre heights and relief bounds
     this._hCache = new Map();
     this._reliefL = [];
@@ -70,10 +76,7 @@ export class SphereLOD {
     this.splitK = splitK;
     this.horizonCull = horizonCull;
     this.maxLevel = Math.min(30, Math.ceil(Math.log2((Math.PI / 2) * this.R / minEdge)));
-    for (let l = 0; l <= this.maxLevel; l++) {
-      const edge = 2 * (Math.PI / 4) * this.R / 2 ** l;
-      this._reliefL.push(model && model.reliefBelow ? Math.min(maxRelief, model.reliefBelow(edge)) : maxRelief);
-    }
+    this.refreshBounds();
     this.maxInstances = maxInstances;
 
     const g = buildGrid(gridN);
@@ -100,6 +103,21 @@ export class SphereLOD {
     this._sphere = new THREE.Sphere();
   }
 
+  /** Recompute radii-dependent limits (after the body switched to a real DEM). */
+  refreshBounds(radii = this.radii, maxRelief = this.maxRelief) {
+    this.radii = radii;
+    this.R = Math.max(...radii);
+    this.Rmin = Math.min(...radii);
+    this.maxRelief = maxRelief;
+    this._reliefL = [];
+    const model = this.model;
+    for (let l = 0; l <= this.maxLevel; l++) {
+      const edge = 2 * (Math.PI / 4) * this.R / 2 ** l;
+      this._reliefL.push(model && model.reliefBelow ? Math.min(maxRelief, model.reliefBelow(edge)) : maxRelief);
+    }
+    this._hCache.clear();
+  }
+
   /** Terrain height at a node centre (cached; the terrain is static apart from streamed DEM). */
   _centreHeight(face, u, v, level, d, edge) {
     if (!this.model || this.model.kind !== 'rock') return 0;
@@ -122,6 +140,9 @@ export class SphereLOD {
    */
   update(camPF, bodyRelCam, rot, frustum, groundH = 0) {
     this.count = 0;
+    // streamed elevation changed: cached centre heights are stale
+    const dem = this.model && this.model.dem;
+    if (dem && dem.version !== this._demVersion) { this._demVersion = dem.version; this._hCache.clear(); }
     const camDist = camPF.length();
     const R = this.R;
     const Rh = this.Rmin * 0.998 - this.maxRelief;
@@ -145,7 +166,9 @@ export class SphereLOD {
       const edge = 2 * half * (Math.PI / 4) * R;
       const hc = this._centreHeight(face, u, v, level, d, edge);
       const px = ra * d[0] + d[0] * hc, py = rb * d[1] + d[1] * hc, pz = rc * d[2] + d[2] * hc;
-      const nodeR = R * beta * 1.05 + this._reliefL[level];
+      // node bound: horizontal extent, relief of the detail inside the node, slopes across it,
+      // and a margin for heights the CPU only approximates
+      const nodeR = R * beta * 1.05 + this._reliefL[level] + 0.35 * edge + this.boundMargin;
       // frustum culling (world, camera relative)
       if (level > 0) {
         const wx = e[0] * px + e[3] * py + e[6] * pz + bodyRelCam.x;
@@ -176,7 +199,10 @@ export class SphereLOD {
       this.chunk[i * 4 + 1] = u;
       this.chunk[i * 4 + 2] = v;
       this.chunk[i * 4 + 3] = half;
-      this.skirt[i] = edge * 0.04 + 1.0;
+      if (this.thinSkirts) {
+        const s = edge / this.gridN;
+        this.skirt[i] = (s * s) / (2 * R) + 0.5;
+      } else this.skirt[i] = edge * 0.04 + 1.0;
     };
     for (let f = 0; f < 6; f++) visit(f, 0, 0, 1, 0);
     this.geometry.instanceCount = this.count;
