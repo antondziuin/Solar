@@ -49,6 +49,7 @@ export class EarthDEM {
     this.queue = [];
     this.enabled = true;
     this.failed = 0;
+    this.version = 0;
     this.winUniform = Array.from({ length: DEM_LEVELS }, () => new THREE.Vector4(0, 0, 1, 0));
     this.levelTex = new THREE.DataArrayTexture(new Float32Array(DEM_SIZE * DEM_SIZE * DEM_LEVELS), DEM_SIZE, DEM_SIZE, DEM_LEVELS);
     this.levelTex.format = THREE.RedFormat;
@@ -208,6 +209,7 @@ export class EarthDEM {
     }
     L.valid = true;
     L.complete = missing === 0;
+    this.version++;
     this.levelTex.image.data.set(d, l * N * N);
     this.levelTex.addLayerUpdate(l);
     this.levelTex.needsUpdate = true;

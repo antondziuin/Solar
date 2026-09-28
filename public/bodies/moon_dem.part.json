@@ -1,0 +1,7 @@
+{
+ "file": "bodies/moon_dem.png",
+ "radius": 1737400,
+ "width": 4096,
+ "height": 2048,
+ "source": "USGS Astrogeology: Moon_Kaguya_LALT_DEM_global_1895m.cub"
+}

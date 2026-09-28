@@ -6,6 +6,8 @@
 //
 // Units: radius in km, GM in km^3/s^2, mass in kg, angles in degrees, `a` in km.
 // Colours are sRGB hex and are linearised at load time.
+// shape: triaxial radii (km, IAU WGCCRE 2015), long axis towards the parent planet.
+// Bodies with a real elevation model (public/bodies) switch to it when it is loaded.
 // surface.amp is the RMS-ish relief (m) of the fractal terrain at a 10 km wavelength.
 
 /**
@@ -172,14 +174,14 @@ export const BODIES = [
   },
   {
     id: 'io', name: 'Io', type: 'moon', parent: 'jupiter',
-    radius: 1821.6, GM: 5959.916, mass: 8.9319e22, albedo: 0.63,
+    radius: 1821.6, shape: [1829.4, 1819.4, 1815.7], GM: 5959.916, mass: 8.9319e22, albedo: 0.63,
     ephem: { kind: 'jupiterMoon', index: 0 }, rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'io', amp: 280, hurst: 0.8, ridge: 0.4, crater: 0.0, c0: '#b9a24a', c1: '#efe29a', albedoNoise: 0.7, seed: 31 },
     info: { rotation: 'synchronous', temp: '~110 K', description: 'The most volcanically active body known, heated by tidal flexing.' },
   },
   {
     id: 'europa', name: 'Europa', type: 'moon', parent: 'jupiter',
-    radius: 1560.8, GM: 3202.739, mass: 4.7998e22, albedo: 0.67,
+    radius: 1560.8, shape: [1562.6, 1560.3, 1559.5], GM: 3202.739, mass: 4.7998e22, albedo: 0.67,
     ephem: { kind: 'jupiterMoon', index: 1 }, rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'europa', amp: 70, hurst: 0.9, ridge: 0.6, crater: 0.08, craterStart: 30e3, c0: '#9c7b5c', c1: '#e8e2d6', albedoNoise: 0.5, seed: 32 },
     info: { rotation: 'synchronous', temp: '~102 K', description: 'An ice shell over a global salt-water ocean; crossed by reddish lineae.' },
@@ -241,7 +243,7 @@ export const BODIES = [
   },
   {
     id: 'mimas', name: 'Mimas', type: 'moon', parent: 'saturn',
-    radius: 198.2, GM: 2.503, mass: 3.75e19, albedo: 0.96,
+    radius: 198.2, shape: [207.8, 196.7, 190.6], GM: 2.503, mass: 3.75e19, albedo: 0.96,
     ephem: { kind: 'kepler', a: 185539, e: 0.0196, i: 1.574, node: 173.027, peri: 332.499, M: 14.848, plane: 'equator' },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', amp: 320, hurst: 0.9, ridge: 0.1, crater: 1.2, craterStart: 60e3, c0: '#a9a7a3', c1: '#e3e1dc', albedoNoise: 0.1, seed: 41,
@@ -250,7 +252,7 @@ export const BODIES = [
   },
   {
     id: 'enceladus', name: 'Enceladus', type: 'moon', parent: 'saturn',
-    radius: 252.1, GM: 7.211, mass: 1.08e20, albedo: 1.38,
+    radius: 252.1, shape: [256.6, 251.4, 248.3], GM: 7.211, mass: 1.08e20, albedo: 1.38,
     ephem: { kind: 'kepler', a: 238042, e: 0.0047, i: 0.003, node: 342.507, peri: 0.076, M: 199.686, plane: 'equator' },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'enceladus', amp: 160, hurst: 0.85, ridge: 0.6, crater: 0.45, craterStart: 25e3, c0: '#d9dde2', c1: '#fbfcfd', albedoNoise: 0.08, seed: 42 },
@@ -258,7 +260,7 @@ export const BODIES = [
   },
   {
     id: 'tethys', name: 'Tethys', type: 'moon', parent: 'saturn',
-    radius: 531.1, GM: 41.21, mass: 6.174e20, albedo: 1.229,
+    radius: 531.1, shape: [538.4, 528.3, 526.3], GM: 41.21, mass: 6.174e20, albedo: 1.229,
     ephem: { kind: 'kepler', a: 294672, e: 0.0001, i: 1.091, node: 259.842, peri: 45.202, M: 243.367, plane: 'equator' },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', amp: 300, hurst: 0.9, ridge: 0.2, crater: 1.0, craterStart: 120e3, c0: '#bdbab4', c1: '#eeebe6', albedoNoise: 0.12, seed: 43,
@@ -268,7 +270,7 @@ export const BODIES = [
   },
   {
     id: 'dione', name: 'Dione', type: 'moon', parent: 'saturn',
-    radius: 561.4, GM: 73.116, mass: 1.095e21, albedo: 0.998,
+    radius: 561.4, shape: [563.4, 561.3, 559.6], GM: 73.116, mass: 1.095e21, albedo: 0.998,
     ephem: { kind: 'kepler', a: 377415, e: 0.0022, i: 0.028, node: 290.415, peri: 284.315, M: 322.232, plane: 'equator' },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'dione', amp: 300, hurst: 0.9, ridge: 0.3, crater: 0.9, craterStart: 100e3, c0: '#8f8b85', c1: '#e6e3dd', albedoNoise: 0.3, seed: 44 },
@@ -276,7 +278,7 @@ export const BODIES = [
   },
   {
     id: 'rhea', name: 'Rhea', type: 'moon', parent: 'saturn',
-    radius: 763.8, GM: 153.94, mass: 2.307e21, albedo: 0.949,
+    radius: 763.8, shape: [765.0, 763.1, 762.4], GM: 153.94, mass: 2.307e21, albedo: 0.949,
     ephem: { kind: 'kepler', a: 527068, e: 0.0002, i: 0.333, node: 351.042, peri: 241.619, M: 179.781, plane: 'equator' },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'dione', amp: 300, hurst: 0.9, ridge: 0.2, crater: 1.1, craterStart: 150e3, c0: '#8d8983', c1: '#dedbd5', albedoNoise: 0.25, seed: 45 },
@@ -284,7 +286,7 @@ export const BODIES = [
   },
   {
     id: 'titan', name: 'Titan', type: 'moon', parent: 'saturn',
-    radius: 2574.73, GM: 8978.14, mass: 1.3452e23, albedo: 0.22,
+    radius: 2574.73, shape: [2575.15, 2574.78, 2574.47], GM: 8978.14, mass: 1.3452e23, albedo: 0.22,
     ephem: { kind: 'kepler', a: 1221865, e: 0.0288, i: 0.306, node: 28.060, peri: 180.532, M: 163.310, plane: { ra: 36.213, dec: 83.469 } },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'titan', amp: 160, hurst: 0.8, ridge: 0.3, crater: 0.05, craterStart: 60e3, c0: '#4a3a26', c1: '#9d8a64', albedoNoise: 0.9, seed: 46 },
@@ -304,7 +306,7 @@ export const BODIES = [
   },
   {
     id: 'iapetus', name: 'Iapetus', type: 'moon', parent: 'saturn',
-    radius: 734.5, GM: 120.5, mass: 1.806e21, albedo: 0.6,
+    radius: 734.5, shape: [745.7, 745.7, 712.1], GM: 120.5, mass: 1.806e21, albedo: 0.6,
     ephem: { kind: 'kepler', a: 3560854, e: 0.0293, i: 8.298, node: 81.105, peri: 271.606, M: 201.789, plane: { ra: 284.715, dec: 78.707 } },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'iapetus', amp: 380, hurst: 0.9, ridge: 0.2, crater: 1.0, craterStart: 200e3, c0: '#2a2016', c1: '#e8e3d8', albedoNoise: 0.2, seed: 48,
@@ -335,7 +337,7 @@ export const BODIES = [
   },
   {
     id: 'miranda', name: 'Miranda', type: 'moon', parent: 'uranus',
-    radius: 235.8, GM: 4.4, mass: 6.4e19, albedo: 0.32,
+    radius: 235.8, shape: [240.4, 234.2, 232.9], GM: 4.4, mass: 6.4e19, albedo: 0.32,
     ephem: { kind: 'kepler', a: 129900, e: 0.0013, i: 4.338, node: 326.438, peri: 68.312, M: 311.330, plane: 'equator' },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'miranda', amp: 550, hurst: 0.9, ridge: 0.7, crater: 0.7, craterStart: 40e3, c0: '#7f7d7a', c1: '#bdbab5', albedoNoise: 0.6, seed: 51,

@@ -38,6 +38,13 @@ uniform sampler2D uTexB;      // earth: topography
 uniform sampler2D uTexC;      // earth: day colour
 uniform sampler2D uTexD;      // earth: night lights
 uniform sampler2D uTexE;      // earth: clouds
+// real global data of other bodies (USGS / NASA), loaded on demand
+uniform highp sampler2D uBodyDem; // RG float: height (m, rel. reference sphere), valid (0/1)
+uniform float uHasDem;
+uniform float uDemTexelM;         // DEM texel size at the equator (m)
+uniform sampler2D uBodyMap;       // surface colour map (sRGB); black = no data
+uniform float uHasMap;
+uniform float uMapGain;           // scales the map to the body's measured albedo
 uniform vec3 uSeedVec;
 
 ${NOISE_GLSL}
@@ -218,13 +225,38 @@ bool isOcean(vec3 dir, float H) {
 #endif
 
 float gDataRes = 1.0;
+float gDemValid = 0.0;
+
+// bilinear height from the body's DEM (x = height, y = coverage)
+vec2 bodyDemAt(vec3 dir) {
+  ivec2 sz = textureSize(uBodyDem, 0);
+  vec2 ll = vec2(asin(clamp(dir.z, -1.0, 1.0)), atan(dir.y, dir.x)) * (180.0 / PI);
+  float x = (ll.y + 180.0) / 360.0 * float(sz.x) - 0.5;
+  float y = (90.0 - ll.x) / 180.0 * float(sz.y) - 0.5;
+  int x0 = int(floor(x)), y0 = int(floor(y));
+  float fx = x - float(x0), fy = y - float(y0);
+  int x1 = x0 + 1, y1 = y0 + 1;
+  if (x0 < 0) x0 += sz.x; if (x1 >= sz.x) x1 -= sz.x;
+  y0 = clamp(y0, 0, sz.y - 1); y1 = clamp(y1, 0, sz.y - 1);
+  vec2 a = texelFetch(uBodyDem, ivec2(x0, y0), 0).rg, b = texelFetch(uBodyDem, ivec2(x1, y0), 0).rg;
+  vec2 c = texelFetch(uBodyDem, ivec2(x0, y1), 0).rg, d = texelFetch(uBodyDem, ivec2(x1, y1), 0).rg;
+  // weight heights by coverage so no-data does not pull the surface to zero
+  vec2 ha = vec2(a.x * a.y, a.y), hb = vec2(b.x * b.y, b.y), hc = vec2(c.x * c.y, c.y), hd = vec2(d.x * d.y, d.y);
+  vec2 m = mix(mix(ha, hb, fx), mix(hc, hd, fx), fy);
+  return vec2(m.y > 1e-4 ? m.x / m.y : 0.0, m.y);
+}
 
 float baseHeight(vec3 dir) {
   float h = featureHeight(dir);
 #ifdef EARTH
   h += demHeight(dir, gNeed, gDataRes);
 #endif
-  if (uSpecial == 2) { // Moon: maria are low basalt plains
+  if (uHasDem > 0.5) {
+    vec2 dm = bodyDemAt(dir);
+    h += dm.x * dm.y;
+    gDemValid = dm.y;
+  }
+  if (uSpecial == 2 && uHasDem < 0.5) { // Moon without its DEM: maria are low basalt plains
     float a = textureLod(uTexA, dirToUV(dir), 0.0).r;
     h += (a - 0.5) * 2600.0;
   }
@@ -305,13 +337,17 @@ void main() {
   float dataRes = gDataRes;
 #ifdef EARTH
   gLamTop = 2.0 * dataRes;
+#else
+  // fractal relief only below the resolution of the real DEM where it has data
+  if (uHasDem > 0.5) gLamTop = mix(uLamTop, 2.0 * uDemTexelM, gDemValid);
 #endif
+  float lamTopV = gLamTop;
   vec3 t1 = normalize(cross(dir, abs(dir.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0)));
   vec3 t2 = cross(dir, t1);
   float eps = clamp(gNeed / R, 3.0e-6, 2.0e-4);
   G = (t1 * (baseHeight(normalize(dir + t1 * eps)) - h0) + t2 * (baseHeight(normalize(dir + t2 * eps)) - h0)) / (eps * R);
   H = h0;
-  vDataRes = dataRes;
+  vDataRes = lamTopV;
   lowOct = gnoise(relSurf / (uLambda0 * 0.125) + uCamOff[3] + 50.0);
   float baseMod = regionAmp(dir, 0.0);
   float modAmp = regionAmp(dir, lowOct);
@@ -406,7 +442,7 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   float t = 0.5 + uAlbedoNoise * (0.55 * n1 + 0.3 * n2 + 0.15 * n3) + alb;
   vec3 c = mix(uColor0, uColor1, clamp(t, 0.0, 1.0));
   if (uSpecial == 2) { // Moon: albedo map + maria tint
-    float a = texture(uTexA, dirToUV(dir)).r;
+    float a = textureLod(uTexA, dirToUV(dir), 0.0).r;
     float m = smoothstep(0.25, 0.62, a + 0.08 * n3 + alb * 0.5);
     c = mix(uColor0 * vec3(0.92, 0.95, 1.02), uColor1, m);
   } else if (uSpecial == 3) { // Mars: dark albedo features (Syrtis, Acidalia...) + dust
@@ -479,7 +515,17 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   } else if (uSpecial == 14) { // Charon: Mordor Macula
     c = mix(c, vec3(0.3, 0.17, 0.12), smoothstep(1.05, 1.3, lat + 0.1 * n2));
   }
-  if (uPolarCap.w > 0.0) {
+  // real surface map: replaces the procedural colours where it has data, keeps the fractal
+  // brightness variations (craters, rays, grain) below its resolution
+  float mapValid = 0.0;
+  if (uHasMap > 0.5) {
+    float lodM = clamp(log2(D * uPixelCut * float(textureSize(uBodyMap, 0).x) / (6.2832 * uRadii.x)), 0.0, 10.0);
+    vec3 m = textureLod(uBodyMap, dirToUV(dir), lodM).rgb;
+    mapValid = smoothstep(0.0006, 0.004, dot(m, vec3(0.3333)));
+    vec3 mc = m * uMapGain * (0.8 + 0.4 * clamp(0.5 + alb * 2.0, 0.0, 1.0));
+    c = mix(c, mc, mapValid);
+  }
+  if (uPolarCap.w > 0.0 && mapValid < 0.5) {
     float capLat = uPolarCap.w * PI / 180.0;
     float soft = uPolarSoft * PI / 180.0;
     float cap = smoothstep(capLat, capLat + soft, abs(lat) + 0.04 * n3 + 0.03 * n2);
@@ -543,6 +589,14 @@ vec3 gasColour(vec3 dir, vec3 nrmOut, float D, out vec3 grad) {
   }
   float latW = lat + uTurbulence * 0.035 * T;
   vec3 c = texture(uBandTex, vec2(0.5, latW / PI + 0.5)).rgb;
+  if (uHasMap > 0.5) {
+    // real cloud map, advected by the same turbulence
+    vec2 uv = vec2((lon + uTurbulence * 0.02 * T) / (2.0 * PI) + 0.5, latW / PI + 0.5);
+    // explicit LOD: the longitude seam would otherwise select the smallest mip along a line
+    float lodG = clamp(log2(D * uPixelCut * float(textureSize(uBodyMap, 0).x) / (6.2832 * uRadii.x)), 0.0, 10.0);
+    vec3 m = textureLod(uBodyMap, uv, lodG).rgb * uMapGain;
+    c = mix(c, m, smoothstep(0.0006, 0.004, dot(m, vec3(0.3333))));
+  }
   c *= 1.0 + uContrast * 0.22 * T;
   // storms (ellipses in lat/lon with spiral structure)
   for (int i = 0; i < 6; i++) {
@@ -619,10 +673,7 @@ void main() {
     float kv = log2(uLambda0 / (2.0 * D * uVertexCut));
     int k0 = int(max(floor(kv), 0.0));
     float lam = uLambda0 * exp2(-float(k0));
-    gLamTop = uLamTop;
-#ifdef EARTH
-    gLamTop = 2.0 * vDataRes;
-#endif
+    gLamTop = vDataRes; // tapering wavelength chosen per vertex (real data resolution)
     float baseMod = regionAmp(dir, 0.0);
     float modAmp = regionAmp(dir, vLowOct);
     for (int k = 0; k < MAX_OCT; k++) {
@@ -712,7 +763,7 @@ void main() {
 #ifdef EARTH
   {
     vec3 cp = normalize(dir + L * (7.0 / 6371.0) / max(muS_(dir, L), 0.15));
-    float cl = texture(uTexE, dirToUV(cp)).r;
+    float cl = textureLod(uTexE, dirToUV(cp), clamp(log2(D * uPixelCut * 0.5 / 9800.0), 0.0, 12.0)).r;
     irr *= 1.0 - 0.75 * cl * smoothstep(0.0, 2000.0, 7000.0 - max(H, 0.0));
   }
 #endif
@@ -766,7 +817,7 @@ void main() {
 #ifdef EARTH
   {
     float night = smoothstep(0.08, -0.12, muS);
-    float clOver = texture(uTexE, dirToUV(dir)).r;
+    float clOver = textureLod(uTexE, dirToUV(dir), clamp(log2(D * uPixelCut * 0.5 / 9800.0), 0.0, 12.0)).r;
     radiance += vec3(1.0, 0.72, 0.42) * lights * night * 0.02 * uExposure * (1.0 - 0.75 * clOver);
   }
 #endif

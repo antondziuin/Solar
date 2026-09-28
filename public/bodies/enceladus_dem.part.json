@@ -1,0 +1,7 @@
+{
+ "file": "bodies/enceladus_dem.png",
+ "radius": 251500,
+ "width": 720,
+ "height": 360,
+ "source": "USGS Astrogeology: enceladus_2019pm_radius.tif"
+}

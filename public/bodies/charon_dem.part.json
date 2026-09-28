@@ -1,0 +1,7 @@
+{
+ "file": "bodies/charon_dem.png",
+ "radius": 606000,
+ "width": 2048,
+ "height": 1024,
+ "source": "USGS Astrogeology: Charon_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif"
+}

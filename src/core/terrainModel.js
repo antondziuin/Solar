@@ -85,6 +85,7 @@ export class TerrainModel {
       this.features.push({ A, B, C, type });
     }
     this.features = this.features.slice(0, MAX_FEATURES);
+    this.bodyDem = null;
     this.samplers = {};
 
     // relief bound (m) for horizon culling: statistical for the fractal, largest crater,
@@ -185,7 +186,13 @@ export class TerrainModel {
       h += this.dem.height(lat, lon, need);
       this._res = this.dem.lastRes;
     }
-    if (this.special === 2 && this.samplers.albedo) {
+    this._demValid = 0;
+    if (this.bodyDem) {
+      const [hv, valid] = this.bodyDem.sample(Math.asin(clamp(z, -1, 1)) / DEG, Math.atan2(y, x) / DEG);
+      h += hv * valid;
+      this._demValid = valid;
+    }
+    if (this.special === 2 && this.samplers.albedo && !this.bodyDem) {
       const [u, v] = dirToUV(x, y, z);
       h += (this.samplers.albedo.sample(u, v) - 0.5) * 2600;
     }
@@ -239,7 +246,8 @@ export class TerrainModel {
     const [a, b, c] = this.radii;
     const Px = a * x, Py = b * y, Pz = c * z;
     const acc = { h: this._baseHeight(x, y, z, minLam * 0.25) };
-    const lamTop = this.special === 1 ? 2 * this._res : this.lamTop;
+    const lamTop = this.special === 1 ? 2 * this._res
+      : this.bodyDem ? this.lamTop + (2 * this.bodyDem.texelM - this.lamTop) * this._demValid : this.lamTop;
     let lam = this.lambda0;
     const sv = this.seedVec;
     const lowOct = gnoise(Px / (this.lambda0 * 0.125) + sv[0] + 50, Py / (this.lambda0 * 0.125) + sv[1] + 50, Pz / (this.lambda0 * 0.125) + sv[2] + 50);
@@ -262,6 +270,23 @@ export class TerrainModel {
       lam *= 0.5;
     }
     return acc.h;
+  }
+
+  /**
+   * Switch to a real global DEM: heights relative to a sphere of `radius`; the landmark
+   * features it already contains are dropped, relief bounds are recomputed.
+   */
+  setBodyDem(dem, keepRadii = false) {
+    this.bodyDem = dem;
+    if (!keepRadii) {
+      this.radii = [dem.radius, dem.radius, dem.radius];
+      this.R = dem.radius;
+    }
+    this.features = [];
+    const old = this.reliefBelow;
+    const fine = old ? old(2 * dem.texelM) : 0;
+    this.maxRelief = Math.max(Math.abs(dem.min), Math.abs(dem.max)) + fine;
+    this.reliefBelow = (edge) => Math.min(fine + (edge > dem.texelM ? Math.min(dem.max - dem.min, edge * 0.5) : edge * 0.3), this.maxRelief);
   }
 
   /** Surface height used for collision (sea level clamps for Earth). */

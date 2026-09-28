@@ -67,6 +67,8 @@ export function makeRingTexture(rings, seed = 0) {
 
 const dummyTex = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
 dummyTex.needsUpdate = true;
+const dummyFloatTex = new THREE.DataTexture(new Float32Array([0, 0]), 1, 1, THREE.RGFormat, THREE.FloatType);
+dummyFloatTex.needsUpdate = true;
 
 export function atmosphereUniforms(body, groundRadiusKm, U = {}) {
   const a = body.atmosphere;
@@ -144,6 +146,12 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uRingRange: { value: new THREE.Vector2(0, 0) },
     uSunRadiance: { value: 1 },
     uOpacity: { value: 1 },
+    uBodyDem: { value: dummyFloatTex },
+    uHasDem: { value: 0 },
+    uDemTexelM: { value: 1 },
+    uBodyMap: { value: dummyTex },
+    uHasMap: { value: 0 },
+    uMapGain: { value: 1 },
   };
   const defines = {};
   if (mode === 'rock') defines.MODE_ROCK = '';
