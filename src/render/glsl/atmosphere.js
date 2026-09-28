@@ -7,6 +7,7 @@ uniform vec3 uAtmoAbsorb;    // absorption (ozone / methane / haze) (1/km)
 uniform vec4 uAtmoShape;     // x: ground radius, y: top radius, z: Hr, w: Hm  (km)
 uniform vec4 uAtmoShape2;    // x: g, y: absorb centre (km, <0: exponential), z: absorb width, w: absorb scale height
 uniform vec3 uAtmoScale;     // body-frame scaling that maps the oblate planet onto a sphere
+uniform float uAtmoMS;       // strength of the multiple-scattering approximation
 
 // robust ray/sphere intersection for large |ro|
 vec2 raySphere(vec3 ro, vec3 rd, float r) {
@@ -57,7 +58,7 @@ vec3 atmoScatter(vec3 ro, vec3 rd, float t0, float t1, vec3 L, out vec3 trans) {
   const int N = 14;
   float ds = (t1 - t0) / float(N);
   vec3 odView = vec3(0.0);
-  vec3 sumR = vec3(0.0), sumM = vec3(0.0);
+  vec3 sumR = vec3(0.0), sumM = vec3(0.0), msR = vec3(0.0), msM = vec3(0.0);
   for (int i = 0; i < N; i++) {
     float t = t0 + ds * (float(i) + 0.5);
     vec3 p = ro + rd * t;
@@ -68,11 +69,16 @@ vec3 atmoScatter(vec3 ro, vec3 rd, float t0, float t1, vec3 L, out vec3 trans) {
     vec3 att = exp(-atmoExtinction(odView + odSun));
     sumR += d.x * att;
     sumM += d.y * att;
+    // higher orders: light diffuses in with reduced extinction and is re-emitted isotropically
+    // (calibrated on Titan's measured I/F, where multiple scattering dominates)
+    float muS = dot(p, L) / length(p);
+    vec3 attMS = exp(-atmoExtinction(odView + odSun * 0.5)) * clamp(muS + 0.15, 0.0, 1.0);
+    msR += d.x * attMS;
+    msM += d.y * attMS;
   }
   trans = exp(-atmoExtinction(odView));
   float c = dot(rd, L);
-  // single scattering + a cheap isotropic estimate of higher orders
-  vec3 sR = sumR * uAtmoRayleigh, sM = sumM * uAtmoMie;
-  return sR * (phaseRayleigh(c) + 0.035) + sM * (phaseMie(c, uAtmoShape2.x) + 0.02);
+  return sumR * uAtmoRayleigh * phaseRayleigh(c) + sumM * uAtmoMie * phaseMie(c, uAtmoShape2.x)
+    + (msR * uAtmoRayleigh + msM * uAtmoMie) * uAtmoMS;
 }
 `;

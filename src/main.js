@@ -45,6 +45,9 @@ class App {
   constructor() {
     this.canvas = document.getElementById('view');
     this.settings = { ev: 0, ambient: 0, bloom: 0.5, detail: 1.5, resolution: 1 };
+    this.autoScale = 1; // dynamic resolution (<= 1), applied on top of the user setting
+    this._ftAvg = 16;
+    this._ftCheck = 0;
     this.clock = new SimClock();
     this.ephem = new Ephemeris(BODIES);
     this.views = {};
@@ -154,6 +157,7 @@ class App {
     Object.assign(c.s, { lon: lon * D, lat: lat * D, alt, heading: heading * D, pitch: pitch * D });
     Object.assign(c.t, c.s);
     this.ui.setActive(b);
+    this.exposure = 5.0 * (Math.max(b.state.pos.length(), 0.25 * AU) / AU) ** 2 * 2 ** this.settings.ev;
   }
 
   setDetail(v) {
@@ -172,7 +176,7 @@ class App {
   resize() {
     if (!this.renderer) return;
     const w = window.innerWidth, h = window.innerHeight;
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2) * (this.settings.resolution || 1);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2) * (this.settings.resolution || 1) * this.autoScale;
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(this.pixelRatio);
@@ -209,6 +213,19 @@ class App {
     this.exposure = Math.exp(Math.log(this.exposure) + (Math.log(target) - Math.log(this.exposure)) * k);
   }
 
+  /** Keep the frame time reasonable on slower GPUs by scaling the render resolution. */
+  _dynamicResolution(rawDt) {
+    if (rawDt > 0.5) return; // tab was hidden / stalled
+    this._ftAvg = this._ftAvg * 0.95 + rawDt * 1000 * 0.05;
+    this._ftCheck += rawDt;
+    if (this._ftCheck < 1.5) return;
+    this._ftCheck = 0;
+    let s = this.autoScale;
+    if (this._ftAvg > 40 && s > 0.5) s = Math.max(0.5, s - 0.1);
+    else if (this._ftAvg < 20 && s < 1) s = Math.min(1, s + 0.1);
+    if (s !== this.autoScale) { this.autoScale = s; this.resize(); }
+  }
+
   /** Stream real elevation tiles around the point below the camera. */
   _updateDem() {
     const earth = this.ephem.byId.earth;
@@ -223,6 +240,7 @@ class App {
     const rawDt = (now - this._last) / 1000;
     this._fps = this._fps ? this._fps * 0.9 + 0.1 / Math.max(rawDt, 1e-3) : 1 / Math.max(rawDt, 1e-3);
     const dt = Math.min(0.1, rawDt);
+    this._dynamicResolution(rawDt);
     this._last = now;
     this.clock.tick(dt);
     this.ephem.update(this.clock.ut);

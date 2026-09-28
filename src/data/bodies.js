@@ -50,7 +50,7 @@ export const BODIES = [
       kind: 'gas', seed: 3, turbulence: 0.35, contrast: 0.12, bandScale: 1.0, windShear: 0.6,
       bands: [[-90, '#d9cfb4'], [-60, '#e1d4b0'], [-30, '#ead9b0'], [0, '#eedcb3'], [30, '#e9d8b0'], [60, '#e0d3b2'], [90, '#d8ceb6']],
     },
-    atmosphere: { height: 120, rayleigh: [12e-3, 13e-3, 14e-3], rayleighH: 16, mie: 6e-3, mieExt: 7e-3, mieH: 12, g: 0.75, absorb: [0.2e-3, 1.0e-3, 4.5e-3], absorbH: 20 },
+    atmosphere: { ms: 0.1, height: 120, rayleigh: [12e-3, 13e-3, 14e-3], rayleighH: 16, mie: 6e-3, mieExt: 7e-3, mieH: 12, g: 0.75, absorb: [0.2e-3, 1.0e-3, 4.5e-3], absorbH: 20 },
     info: { rotation: '−243.02 d (retrograde)', temp: '737 K (surface)', description: 'Shrouded in sulfuric-acid clouds over a 92-bar CO₂ atmosphere; the hottest planetary surface.' },
   },
 
@@ -60,11 +60,11 @@ export const BODIES = [
     radius: 6378.137, polarRadius: 6356.752, GM: 398600.4418, mass: 5.97217e24, albedo: 0.306,
     ephem: { kind: 'astro', body: 'Earth' }, rotation: { kind: 'iau', body: 'Earth' },
     surface: {
-      kind: 'rock', special: 'earth', amp: 900, hurst: 0.75, ridge: 0.55, crater: 0.0,
+      kind: 'rock', special: 'earth', amp: 650, hurst: 0.75, ridge: 0.55, crater: 0.0,
       c0: '#6b5a44', c1: '#9c8a6c', albedoNoise: 0.2, seed: 1,
     },
     clouds: { altitude: 7, texture: 'earth_clouds' },
-    atmosphere: {
+    atmosphere: { ms: 0.04,
       height: 100, rayleigh: [5.802e-3, 13.558e-3, 33.1e-3], rayleighH: 8,
       mie: 0.021, mieExt: 0.0233, mieH: 1.2, g: 0.78,
       absorb: [0.650e-3, 1.881e-3, 0.085e-3], absorbCenter: 25, absorbWidth: 15, // ozone
@@ -114,7 +114,7 @@ export const BODIES = [
         { type: 'dichotomy', depth: 3.0 },
       ],
     },
-    atmosphere: {
+    atmosphere: { ms: 0.06,
       height: 90, rayleigh: [19.918e-3 * 0.12, 13.57e-3 * 0.12, 5.75e-3 * 0.12], rayleighH: 11,
       mie: 0.012, mieExt: 0.016, mieH: 11, g: 0.76, mieColor: [1.0, 0.72, 0.5],
     },
@@ -159,7 +159,7 @@ export const BODIES = [
         { lat: -41, lon: 290, rx: 1.3, ry: 1.0, color: '#f0eadf', strength: 0.6 },
       ],
     },
-    atmosphere: { height: 1200, rayleigh: [2.0e-3, 4.6e-3, 11e-3], rayleighH: 27, mie: 0.5e-3, mieExt: 0.6e-3, mieH: 27, g: 0.7 },
+    atmosphere: { ms: 0.05, height: 1200, rayleigh: [2.0e-3, 4.6e-3, 11e-3], rayleighH: 27, mie: 0.5e-3, mieExt: 0.6e-3, mieH: 27, g: 0.7 },
     rings: {
       color: '#8a7a68', albedo: 0.05, bands: [
         [92000, 122500, 0.002], // halo
@@ -220,7 +220,7 @@ export const BODIES = [
         [22, '#dcc697'], [30, '#cdb68a'], [40, '#d1bd92'], [50, '#bda983'], [62, '#aea086'], [72, '#8f9190'], [78, '#7f8a91'], [90, '#737e86'],
       ],
     },
-    atmosphere: { height: 1500, rayleigh: [1.5e-3, 3.4e-3, 8e-3], rayleighH: 60, mie: 0.6e-3, mieExt: 0.7e-3, mieH: 60, g: 0.7 },
+    atmosphere: { ms: 0.05, height: 1500, rayleigh: [1.5e-3, 3.4e-3, 8e-3], rayleighH: 60, mie: 0.6e-3, mieExt: 0.7e-3, mieH: 60, g: 0.7 },
     rings: {
       color: '#cdbb9b', albedo: 0.5, bands: [
         [66900, 74490, 0.002, '#8a8074'], // D ring
@@ -287,9 +287,9 @@ export const BODIES = [
     ephem: { kind: 'kepler', a: 1221865, e: 0.0288, i: 0.306, node: 28.060, peri: 180.532, M: 163.310, plane: { ra: 36.213, dec: 83.469 } },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'titan', amp: 160, hurst: 0.8, ridge: 0.3, crater: 0.05, craterStart: 60e3, c0: '#4a3a26', c1: '#9d8a64', albedoNoise: 0.9, seed: 46 },
-    atmosphere: {
+    atmosphere: { ms: 0.1,
       height: 700, rayleigh: [3.0e-3, 5.5e-3, 9e-3], rayleighH: 45,
-      mie: 0.04, mieExt: 0.058, mieH: 55, g: 0.65, mieColor: [1.0, 0.62, 0.22],
+      mie: 0.05, mieExt: 0.052, mieH: 60, g: 0.6, mieColor: [1.0, 0.6, 0.25],
     },
     info: { rotation: 'synchronous', temp: '94 K', description: 'The only moon with a dense atmosphere; methane rain fills lakes and seas at its poles.' },
   },
@@ -320,7 +320,7 @@ export const BODIES = [
       kind: 'gas', special: 'uranus', seed: 8, turbulence: 0.15, contrast: 0.12, bandScale: 1.0, windShear: 0.5,
       bands: [[-90, '#b2dde2'], [-60, '#a9d6dd'], [-30, '#a3d1da'], [0, '#9dccd8'], [30, '#a2d2da'], [55, '#b7dfe2'], [65, '#cfe8e8'], [90, '#d8eceb']],
     },
-    atmosphere: { height: 700, rayleigh: [2.5e-3, 5.9e-3, 13e-3], rayleighH: 40, mie: 0.3e-3, mieExt: 0.35e-3, mieH: 40, g: 0.7, absorb: [0.8e-3, 0.1e-3, 0.05e-3], absorbH: 60 },
+    atmosphere: { ms: 0.06, height: 700, rayleigh: [2.5e-3, 5.9e-3, 13e-3], rayleighH: 40, mie: 0.3e-3, mieExt: 0.35e-3, mieH: 40, g: 0.7, absorb: [0.8e-3, 0.1e-3, 0.05e-3], absorbH: 60 },
     rings: {
       color: '#3a3836', albedo: 0.03, bands: [
         [41837 - 1, 41837 + 1, 0.3], [42234 - 1, 42234 + 1, 0.4], [42571 - 1, 42571 + 1, 0.4],
@@ -387,7 +387,7 @@ export const BODIES = [
         { lat: -26, lon: 118, rx: 5, ry: 1.2, color: '#eef3fb', strength: 0.9 }, // companion cloud
       ],
     },
-    atmosphere: { height: 700, rayleigh: [2.5e-3, 5.9e-3, 13e-3], rayleighH: 40, mie: 0.3e-3, mieExt: 0.35e-3, mieH: 40, g: 0.7, absorb: [1.2e-3, 0.15e-3, 0.05e-3], absorbH: 60 },
+    atmosphere: { ms: 0.06, height: 700, rayleigh: [2.5e-3, 5.9e-3, 13e-3], rayleighH: 40, mie: 0.3e-3, mieExt: 0.35e-3, mieH: 40, g: 0.7, absorb: [1.2e-3, 0.15e-3, 0.05e-3], absorbH: 60 },
     rings: {
       color: '#5a5550', albedo: 0.04, bands: [
         [41000, 43000, 0.0001], [53200 - 50, 53200 + 50, 0.002], [53200, 57200, 0.00005], [62932 - 25, 62932 + 25, 0.01],
@@ -401,7 +401,7 @@ export const BODIES = [
     ephem: { kind: 'kepler', a: 354759, e: 0.0000, i: 156.865, node: 177.608, peri: 0, M: 358.0, plane: { ra: 299.456, dec: 43.414 } },
     rotation: { kind: 'locked' },
     surface: { kind: 'rock', special: 'triton', amp: 160, hurst: 0.85, ridge: 0.4, crater: 0.15, craterStart: 30e3, c0: '#9d8c83', c1: '#e8dcd5', albedoNoise: 0.6, seed: 61 },
-    atmosphere: { height: 60, rayleigh: [0.05e-3, 0.12e-3, 0.28e-3], rayleighH: 14, mie: 0.02e-3, mieExt: 0.025e-3, mieH: 10, g: 0.7 },
+    atmosphere: { ms: 0.04, height: 60, rayleigh: [0.05e-3, 0.12e-3, 0.28e-3], rayleighH: 14, mie: 0.02e-3, mieExt: 0.025e-3, mieH: 10, g: 0.7 },
     info: { rotation: 'synchronous', temp: '38 K', description: 'A captured Kuiper-belt object on a retrograde orbit, with nitrogen geysers and “cantaloupe” terrain.' },
   },
   {
@@ -427,7 +427,7 @@ export const BODIES = [
     radius: 1188.3, GM: 869.6, mass: 1.303e22, albedo: 0.52,
     ephem: { kind: 'astro', body: 'Pluto', barycentricPartner: 'charon' }, rotation: { kind: 'iau', body: 'Pluto' },
     surface: { kind: 'rock', special: 'pluto', amp: 380, hurst: 0.85, ridge: 0.5, crater: 0.5, craterStart: 80e3, c0: '#6b4a36', c1: '#e3d6c6', albedoNoise: 0.7, seed: 71 },
-    atmosphere: { height: 250, rayleigh: [0.25e-3, 0.6e-3, 1.4e-3], rayleighH: 40, mie: 0.02e-3, mieExt: 0.03e-3, mieH: 30, g: 0.6 },
+    atmosphere: { ms: 0.05, height: 250, rayleigh: [0.25e-3, 0.6e-3, 1.4e-3], rayleighH: 40, mie: 0.02e-3, mieExt: 0.03e-3, mieH: 30, g: 0.6 },
     info: { rotation: '−6.387 d (retrograde)', temp: '~44 K', description: 'A dwarf planet with a nitrogen-ice glacier (Sputnik Planitia) forming its “heart”.' },
   },
   {

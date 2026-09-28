@@ -170,7 +170,7 @@ export class TerrainModel {
     let m = clamp(1 + 0.8 * lowOct, 0.25, 1.9);
     if (this.special === 1 && this.dem) {
       const e = Math.max(this.dem.sampleBase(Math.asin(clamp(z, -1, 1)) / DEG, Math.atan2(y, x) / DEG), 0);
-      m *= Math.min(0.3 + 3.2 * Math.pow(e / 4000, 0.8), 3.0);
+      m *= Math.min(0.25 + 1.3 * Math.pow(e / 4000, 0.8), 1.6);
     }
     if (this.special === 2 && this.samplers.albedo) {
       const [u, v] = dirToUV(x, y, z);

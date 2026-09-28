@@ -233,7 +233,7 @@ float regionAmp(vec3 dir, float lowOct) {
   // rugged where the land is high (from the coarse elevation map), smooth plains and sea floor
   vec2 ll = vec2(asin(clamp(dir.z, -1.0, 1.0)), atan(dir.y, dir.x)) * (180.0 / PI);
   float e = max(demBaseAt(ll), 0.0);
-  m *= min(0.3 + 3.2 * pow(e / 4000.0, 0.8), 3.0);
+  m *= min(0.25 + 1.3 * pow(e / 4000.0, 0.8), 1.6);
 #endif
   if (uSpecial == 2) m *= 0.6 + 0.8 * textureLod(uTexA, dirToUV(dir), 0.0).r;
   return m;
@@ -612,19 +612,22 @@ void main() {
 
 #if defined(MODE_SUN)
   // granulation: cellular network at all scales, limb darkening
-  float g = 0.0, amp = 1.0, lam = uLambda0;
+  // spectrum: granulation (~1 Mm) dominates, weaker supergranulation (~30 Mm), fine lanes below
+  float g = 0.0, lam = uLambda0;
   for (int k = 0; k < MAX_OCT; k++) {
     float w = clamp(log2(lam / (D * uPixelCut)), 0.0, 1.0);
     if (w <= 0.0) break;
+    float kf = log2(6.957e8 / lam);
+    float amp = 0.9 * exp(-pow((kf - 9.5) / 1.6, 2.0)) + 0.25 * exp(-pow((kf - 4.5) / 1.2, 2.0)) + 0.15 * pow(0.8, max(kf - 10.0, 0.0)) * step(10.0, kf);
     vec3 x = vRelSurf / lam + uCamOff[k];
     float v = 1.0 - abs(gnoise(x));
     g += w * amp * (v * v - 0.5);
-    amp *= 0.62; lam *= 0.5;
+    lam *= 0.5;
   }
   float mu = clamp(dot(nS, V), 0.0, 1.0);
   vec3 limb = vec3(1.0) - vec3(0.4, 0.55, 0.75) * (1.0 - pow(mu, 0.8));
   float spots = smoothstep(0.62, 0.7, gnoise(dir * 5.0 + vec3(0.0, 0.0, uTime * 0.02))) * smoothstep(0.6, 0.15, abs(dir.z));
-  vec3 col = vec3(1.0, 0.93, 0.82) * limb * (1.0 + 0.25 * g) * (1.0 - 0.75 * spots);
+  vec3 col = vec3(1.0, 0.9, 0.76) * limb * (1.0 + 0.45 * g) * (1.0 - 0.75 * spots);
   gl_FragColor = vec4(col * uSunRadiance, 1.0);
   return;
 #else

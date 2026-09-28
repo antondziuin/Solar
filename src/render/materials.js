@@ -77,6 +77,7 @@ export function atmosphereUniforms(body, groundRadiusKm, U = {}) {
   U.uAtmoAbsorb = { value: new THREE.Vector3(...(a.absorb || [0, 0, 0])) };
   U.uAtmoShape = { value: new THREE.Vector4(groundRadiusKm, groundRadiusKm + a.height, a.rayleighH, a.mieH) };
   U.uAtmoShape2 = { value: new THREE.Vector4(a.g ?? 0.76, a.absorbCenter ?? -1, a.absorbWidth ?? 1, a.absorbH ?? 10) };
+  U.uAtmoMS = { value: a.ms ?? 0.05 };
   const eq = body.radius || 1, pol = body.polarRadius || eq;
   U.uAtmoScale = { value: new THREE.Vector3(1, 1, eq / pol) };
   return U;
