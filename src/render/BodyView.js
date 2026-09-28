@@ -147,7 +147,7 @@ export class BodyView {
     if (this.mode === 'sun') {
       // keep the disc detailed when it fills the screen, dazzling when it is small
       const px = this.pixelRadius;
-      const t = Math.min(1, Math.max(0, Math.log10(px / 30) / 1.5));
+      const t = Math.min(1, Math.max(0, Math.log10(px / 3) / 1.3));
       U.uSunRadiance.value = 60 * (1 - t) + 1.6 * t;
     } else {
       // eclipses

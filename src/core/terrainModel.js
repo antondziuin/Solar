@@ -96,8 +96,8 @@ export class TerrainModel {
     this.maxRelief = s.kind === 'rock' ? relief : 0;
   }
 
-  _octaveAmp(lam) {
-    const a = (this.amp * Math.pow(lam / 1e4, this.hurst)) / (1 + Math.pow(lam / this.lamTop, this.hurst + 1));
+  _octaveAmp(lam, lamTop = this.lamTop) {
+    const a = (this.amp * Math.pow(lam / 1e4, this.hurst)) / (1 + Math.pow(lam / lamTop, this.hurst + 1));
     return Math.max(a, this.lumpy * lam * 0.35);
   }
 
@@ -151,13 +151,13 @@ export class TerrainModel {
     return h;
   }
 
-  _baseHeight(x, y, z) {
+  _baseHeight(x, y, z, need = 1) {
     let h = this._featureHeight(x, y, z);
-    if (this.special === 1 && this.samplers.water) {
-      const [u, v] = dirToUV(x, y, z);
-      const land = 1 - this.samplers.water.sample(u, v);
-      const topo = this.samplers.topo.sample(u, v);
-      h += (land - 0.5) * 1400 + Math.pow(topo, 1.15) * 6300 * land;
+    this._res = 9800;
+    if (this.special === 1 && this.dem) {
+      const lat = Math.asin(clamp(z, -1, 1)) / DEG, lon = Math.atan2(y, x) / DEG;
+      h += this.dem.height(lat, lon, need);
+      this._res = this.dem.lastRes;
     }
     if (this.special === 2 && this.samplers.albedo) {
       const [u, v] = dirToUV(x, y, z);
@@ -168,11 +168,9 @@ export class TerrainModel {
 
   _regionAmp(x, y, z, lowOct) {
     let m = clamp(1 + 0.8 * lowOct, 0.25, 1.9);
-    if (this.special === 1 && this.samplers.water) {
-      const [u, v] = dirToUV(x, y, z);
-      const land = 1 - this.samplers.water.sample(u, v);
-      const topo = this.samplers.topo.sample(u, v);
-      m *= 0.35 + (Math.min(0.12 + 5.0 * topo, 3.0) - 0.35) * land;
+    if (this.special === 1 && this.dem) {
+      const e = Math.max(this.dem.sampleBase(Math.asin(clamp(z, -1, 1)) / DEG, Math.atan2(y, x) / DEG), 0);
+      m *= Math.min(0.3 + 3.2 * Math.pow(e / 4000, 0.8), 3.0);
     }
     if (this.special === 2 && this.samplers.albedo) {
       const [u, v] = dirToUV(x, y, z);
@@ -214,7 +212,8 @@ export class TerrainModel {
     if (this.kind !== 'rock') return 0;
     const [a, b, c] = this.radii;
     const Px = a * x, Py = b * y, Pz = c * z;
-    const acc = { h: this._baseHeight(x, y, z) };
+    const acc = { h: this._baseHeight(x, y, z, minLam * 0.25) };
+    const lamTop = this.special === 1 ? 2 * this._res : this.lamTop;
     let lam = this.lambda0;
     const sv = this.seedVec;
     const lowOct = gnoise(Px / (this.lambda0 * 0.125) + sv[0] + 50, Py / (this.lambda0 * 0.125) + sv[1] + 50, Pz / (this.lambda0 * 0.125) + sv[2] + 50);
@@ -224,7 +223,7 @@ export class TerrainModel {
       const w = clamp(Math.log2(lam / minLam), 0, 1);
       if (w <= 0) break;
       const nx = Px / lam + sv[0], ny = Py / lam + sv[1], nz = Pz / lam + sv[2];
-      const A = this._octaveAmp(lam) * (k >= 3 ? modAmp : 0.6 * baseMod);
+      const A = this._octaveAmp(lam, lamTop) * (k >= 3 ? modAmp : 0.6 * baseMod);
       const n = gnoised(nx, ny, nz);
       const rv = 1 - Math.abs(n[0]);
       acc.h += w * A * ((1 - this.ridge) * n[0] + this.ridge * (rv * rv - 0.45));
@@ -241,7 +240,11 @@ export class TerrainModel {
   /** Surface height used for collision (sea level clamps for Earth). */
   groundHeight(x, y, z, minLam) {
     const h = this.height(x, y, z, minLam);
-    return this.special === 1 ? Math.max(h, 0) : h;
+    if (this.special === 1 && h < 0 && this.samplers.water) {
+      const [u, v] = dirToUV(x, y, z);
+      if (this.samplers.water.sample(u, v) > 0.5 || h < -25) return 0;
+    }
+    return h;
   }
 
   /** Per-octave camera offsets (camera * f_k + seed) mod 289, packed for the uniform array. */

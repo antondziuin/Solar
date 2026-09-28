@@ -67,9 +67,9 @@ void main() {
   vec2 uv = vec2(ra / 6.28318530718, dec / 3.14159265359 + 0.5);
   float m = texture2D(uMap, uv).r;
   // mottled star clouds and dust lanes
-  float n = fbm3(q * 14.0 + 3.0, 5);
-  float lanes = smoothstep(0.1, 0.5, fbm3(q * 7.0 + 11.0, 4));
-  float v = m * (0.75 + 0.5 * n) * (1.0 - 0.45 * lanes * m);
+  float n = fbm3(q * 22.0 + 3.0, 6);
+  float lanes = smoothstep(0.05, 0.45, fbm3(q * 11.0 + 11.0, 5));
+  float v = m * m * (0.6 + 0.8 * n) * (1.0 - 0.55 * lanes * m);
   vec3 col = mix(vec3(0.55, 0.6, 0.75), vec3(1.0, 0.9, 0.75), m) * v;
   // faint zodiacal/background glow
   col += vec3(0.012, 0.012, 0.016) * (1.0 + 0.5 * n);
@@ -130,7 +130,7 @@ export class Sky {
       vertexShader: MW_VERT,
       fragmentShader: MW_FRAG,
       uniforms: {
-        uMap: { value: mwTex }, uIntensity: { value: 0.08 }, uInvExposure: { value: 1 },
+        uMap: { value: mwTex }, uIntensity: { value: 0.05 }, uInvExposure: { value: 1 },
         uCosE: { value: Math.cos(OBLIQUITY_J2000) }, uSinE: { value: Math.sin(OBLIQUITY_J2000) },
       },
       side: THREE.BackSide,

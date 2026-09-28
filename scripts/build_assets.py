@@ -107,8 +107,6 @@ def build_earth():
     lights = np.clip((n[..., 0] * 1.2 - n[..., 2] * 0.9) * 1.6, 0, 1)
     Image.fromarray((lights * 255).astype(np.uint8), "L").save(
         os.path.join(OUT, "textures/earth_lights.jpg"), quality=90)
-    Image.open(os.path.join(img, "earth-topology.png")).convert("L").save(
-        os.path.join(OUT, "textures/earth_topo.png"), optimize=True)
     water = Image.open(os.path.join(img, "earth-water.png")).convert("L").resize((2048, 1024), Image.BILINEAR)
     water.save(os.path.join(OUT, "textures/earth_water.png"), optimize=True)
     clouds = Image.open(os.path.join(NM, "three-globe/example/clouds/clouds.png")).convert("RGBA")

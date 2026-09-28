@@ -157,9 +157,13 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
   }
   if (body.rings && mode === 'gas') defines.RINGSHADOW = '';
 
+  if (s.special === 'earth' && mode === 'rock') {
+    U.uDemBase = { value: textures.dem.baseTex };
+    U.uDemLevels = { value: textures.dem.levelTex };
+    U.uDemWin = { value: textures.dem.winUniform };
+  }
   if (s.special === 'earth') {
     U.uTexA.value = textures.earth_water;
-    U.uTexB.value = textures.earth_topo;
     U.uTexC.value = textures.earth_day;
     U.uTexD.value = textures.earth_lights;
     U.uTexE.value = textures.earth_clouds;

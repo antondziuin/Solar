@@ -15,6 +15,7 @@ import { Sky } from './render/Sky.js';
 import { Orbits } from './render/Orbits.js';
 import { Markers } from './render/Markers.js';
 import { UI } from './ui/ui.js';
+import { EarthDEM } from './core/earthDem.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -75,20 +76,22 @@ class App {
       t.minFilter = THREE.LinearMipmapLinearFilter;
       return t;
     };
-    const [earth_day, earth_lights, earth_clouds, earth_water, earth_topo, moon_albedo] = await Promise.all([
+    this.dem = new EarthDEM();
+    const [earth_day, earth_lights, earth_clouds, earth_water, moon_albedo] = await Promise.all([
       tex('earth_day.jpg', true), tex('earth_lights.jpg', false), tex('earth_clouds.jpg', false),
-      tex('earth_water.png', false), tex('earth_topo.png', false), tex('moon_albedo.png', false),
+      tex('earth_water.png', false), tex('moon_albedo.png', false),
+      this.dem.loadBase(`${BASE}textures/earth_dem.png`),
     ]);
-    this.textures = { earth_day, earth_lights, earth_clouds, earth_water, earth_topo, moon_albedo };
-    const [waterData, topoData, moonData] = await Promise.all([
-      loadImageData(`${BASE}textures/earth_water.png`), loadImageData(`${BASE}textures/earth_topo.png`), loadImageData(`${BASE}textures/moon_albedo.png`),
+    this.textures = { earth_day, earth_lights, earth_clouds, earth_water, moon_albedo, dem: this.dem };
+    const [waterData, moonData] = await Promise.all([
+      loadImageData(`${BASE}textures/earth_water.png`), loadImageData(`${BASE}textures/moon_albedo.png`),
     ]);
 
     setText('Building worlds…');
     this.ephem.update(this.clock.ut);
     for (const b of BODIES) {
       const model = new TerrainModel(b);
-      if (b.id === 'earth') model.samplers = { water: new EquirectSampler(waterData), topo: new EquirectSampler(topoData) };
+      if (b.id === 'earth') { model.samplers = { water: new EquirectSampler(waterData) }; model.dem = this.dem; }
       if (b.id === 'moon') model.samplers = { albedo: new EquirectSampler(moonData) };
       this.views[b.id] = new BodyView(b, model, this.textures, this.scene);
     }
@@ -206,6 +209,16 @@ class App {
     this.exposure = Math.exp(Math.log(this.exposure) + (Math.log(target) - Math.log(this.exposure)) * k);
   }
 
+  /** Stream real elevation tiles around the point below the camera. */
+  _updateDem() {
+    const earth = this.ephem.byId.earth;
+    const p = this.controller.position.clone().sub(earth.state.pos).applyMatrix3(earth.state.rotInv);
+    const r = p.length();
+    const lat = Math.asin(p.z / r) * 180 / Math.PI, lon = Math.atan2(p.y, p.x) * 180 / Math.PI;
+    const alt = r - 6371000 - Math.max(this.views.earth.groundH, 0);
+    this.dem.update(lat, lon, Math.max(alt, 1));
+  }
+
   frame(now) {
     const rawDt = (now - this._last) / 1000;
     this._fps = this._fps ? this._fps * 0.9 + 0.1 / Math.max(rawDt, 1e-3) : 1 / Math.max(rawDt, 1e-3);
@@ -215,6 +228,7 @@ class App {
     this.ephem.update(this.clock.ut);
     this.controller.update(dt);
     this._autoExposure(dt);
+    this._updateDem();
 
     const cam = this.camera;
     const camPos = this.controller.position;

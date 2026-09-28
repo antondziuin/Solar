@@ -45,8 +45,13 @@ vec2 dirToUV(vec3 d) {
   return vec2(atan(d.y, d.x) * (0.5 / PI) + 0.5, asin(clamp(d.z, -1.0, 1.0)) / PI + 0.5);
 }
 
+// fractal detail is tapered above gLamTop (where real elevation data takes over)
+float gLamTop = 1.0;
+// sampling footprint (m) of the height function at the current vertex
+float gNeed = 1.0;
+
 float octaveAmp(float lam) {
-  float a = uAmp * pow(lam / 1.0e4, uHurst) / (1.0 + pow(lam / uLamTop, uHurst + 1.0));
+  float a = uAmp * pow(lam / 1.0e4, uHurst) / (1.0 + pow(lam / gLamTop, uHurst + 1.0));
   return max(a, uLumpy * lam * 0.35);
 }
 
@@ -149,13 +154,70 @@ float featureHeight(vec3 dir) {
   return h;
 }
 
+#ifdef EARTH
+// ---- real elevation: global base map + camera-centred clipmap of streamed tiles
+uniform highp sampler2D uDemBase;
+uniform highp sampler2DArray uDemLevels;
+uniform vec4 uDemWin[8];     // centre lon, centre lat, size (deg), texel size (m); w = 0: inactive
+
+float demBaseAt(vec2 ll) {
+  ivec2 sz = textureSize(uDemBase, 0);
+  float x = (ll.y + 180.0) / 360.0 * float(sz.x) - 0.5;
+  float y = (90.0 - ll.x) / 180.0 * float(sz.y) - 0.5;
+  int x0 = int(floor(x)), y0 = int(floor(y));
+  float fx = x - float(x0), fy = y - float(y0);
+  int x1 = x0 + 1, y1 = y0 + 1;
+  if (x0 < 0) x0 += sz.x; if (x1 >= sz.x) x1 -= sz.x;
+  y0 = clamp(y0, 0, sz.y - 1); y1 = clamp(y1, 0, sz.y - 1);
+  float a = texelFetch(uDemBase, ivec2(x0, y0), 0).r, b = texelFetch(uDemBase, ivec2(x1, y0), 0).r;
+  float c = texelFetch(uDemBase, ivec2(x0, y1), 0).r, d = texelFetch(uDemBase, ivec2(x1, y1), 0).r;
+  return mix(mix(a, b, fx), mix(c, d, fx), fy);
+}
+
+float demLevelAt(int l, vec2 uv) {
+  float N = 512.0;
+  float x = uv.x * N - 0.5, y = uv.y * N - 0.5;
+  int x0 = clamp(int(floor(x)), 0, 510), y0 = clamp(int(floor(y)), 0, 510);
+  float fx = clamp(x - float(x0), 0.0, 1.0), fy = clamp(y - float(y0), 0.0, 1.0);
+  float a = texelFetch(uDemLevels, ivec3(x0, y0, l), 0).r, b = texelFetch(uDemLevels, ivec3(x0 + 1, y0, l), 0).r;
+  float c = texelFetch(uDemLevels, ivec3(x0, y0 + 1, l), 0).r, d = texelFetch(uDemLevels, ivec3(x0 + 1, y0 + 1, l), 0).r;
+  return mix(mix(a, b, fx), mix(c, d, fx), fy);
+}
+
+// elevation (m) for a sampling footprint 'need' (m); also returns the data resolution used
+float demHeight(vec3 dir, float need, out float res) {
+  vec2 ll = vec2(asin(clamp(dir.z, -1.0, 1.0)), atan(dir.y, dir.x)) * (180.0 / PI);
+  float h = demBaseAt(ll);
+  res = 9800.0;
+  for (int l = 0; l < 8; l++) {
+    vec4 w = uDemWin[l];
+    if (w.w <= 0.0) break;
+    float dl = mod(ll.y - w.x + 540.0, 360.0) - 180.0;
+    vec2 uv = vec2(dl / w.z + 0.5, (ll.x - w.y) / w.z + 0.5);
+    float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    if (edge <= 0.02) break;
+    float fe = min(1.0, (edge - 0.02) / 0.06);
+    float fr = clamp(log2(w.w / need) + 1.0, 0.0, 1.0);
+    if (fr <= 0.0) break;
+    float f = fe * fr;
+    h = mix(h, demLevelAt(l, uv), f);
+    res = mix(res, w.w, f);
+  }
+  return h;
+}
+
+bool isOcean(vec3 dir, float H) {
+  float water = textureLod(uTexA, dirToUV(dir), 0.0).r;
+  return H < 0.0 && (water > 0.5 || H < -25.0);
+}
+#endif
+
+float gDataRes = 1.0;
+
 float baseHeight(vec3 dir) {
   float h = featureHeight(dir);
 #ifdef EARTH
-  vec2 uv = dirToUV(dir);
-  float land = 1.0 - textureLod(uTexA, uv, 0.0).r;
-  float topo = textureLod(uTexB, uv, 0.0).r;
-  h += (land - 0.5) * 1400.0 + pow(topo, 1.15) * 6300.0 * land;
+  h += demHeight(dir, gNeed, gDataRes);
 #endif
   if (uSpecial == 2) { // Moon: maria are low basalt plains
     float a = textureLod(uTexA, dirToUV(dir), 0.0).r;
@@ -168,10 +230,10 @@ float baseHeight(vec3 dir) {
 float regionAmp(vec3 dir, float lowOct) {
   float m = clamp(1.0 + 0.8 * lowOct, 0.25, 1.9);
 #ifdef EARTH
-  vec2 uv = dirToUV(dir);
-  float land = 1.0 - textureLod(uTexA, uv, 0.0).r;
-  float topo = textureLod(uTexB, uv, 0.0).r;
-  m *= mix(0.35, min(0.12 + 5.0 * topo, 3.0), land);
+  // rugged where the land is high (from the coarse elevation map), smooth plains and sea floor
+  vec2 ll = vec2(asin(clamp(dir.z, -1.0, 1.0)), atan(dir.y, dir.x)) * (180.0 / PI);
+  float e = max(demBaseAt(ll), 0.0);
+  m *= min(0.3 + 3.2 * pow(e / 4000.0, 0.8), 3.0);
 #endif
   if (uSpecial == 2) m *= 0.6 + 0.8 * textureLod(uTexA, dirToUV(dir), 0.0).r;
   return m;
@@ -215,6 +277,7 @@ out float vH;
 out vec3 vGrad;
 out float vAlb;
 out float vLowOct;
+out float vDataRes;
 
 #include <logdepthbuf_pars_vertex>
 
@@ -227,15 +290,23 @@ void main() {
   vec3 G = vec3(0.0);
   float alb = 0.0;
   float lowOct = 0.0;
+  vDataRes = 1.0;
 #if defined(MODE_ROCK)
   // deterministic large-scale relief + finite-difference gradient
+  float R = uRadii.x;
+  gNeed = D * uVertexCut * 0.25;
+  gLamTop = uLamTop;
   float h0 = baseHeight(dir);
+  float dataRes = gDataRes;
+#ifdef EARTH
+  gLamTop = 2.0 * dataRes;
+#endif
   vec3 t1 = normalize(cross(dir, abs(dir.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0)));
   vec3 t2 = cross(dir, t1);
-  const float eps = 2.0e-4;
-  float R = uRadii.x;
+  float eps = clamp(gNeed / R, 3.0e-6, 2.0e-4);
   G = (t1 * (baseHeight(normalize(dir + t1 * eps)) - h0) + t2 * (baseHeight(normalize(dir + t2 * eps)) - h0)) / (eps * R);
   H = h0;
+  vDataRes = dataRes;
   lowOct = gnoise(relSurf / (uLambda0 * 0.125) + uCamOff[3] + 50.0);
   float baseMod = regionAmp(dir, 0.0);
   float modAmp = regionAmp(dir, lowOct);
@@ -250,7 +321,7 @@ void main() {
 #endif
   float Hgeo = H;
 #ifdef EARTH
-  Hgeo = max(H, 0.0);
+  if (isOcean(dir, H)) Hgeo = 0.0;
 #endif
   Hgeo -= position.z * iSkirt;
   vec3 nrm = normalize(dir / (uRadii * uRadii));
@@ -304,6 +375,7 @@ in float vH;
 in vec3 vGrad;
 in float vAlb;
 in float vLowOct;
+in float vDataRes;
 
 #include <logdepthbuf_pars_fragment>
 
@@ -441,20 +513,30 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   vec3 tex = textureLod(uTexC, uv, lod).rgb;
   float waterTex = textureLod(uTexA, uv, 0.0).r;
   // land colour from the Blue Marble; where the fractal coast gains land, borrow a sandy tone
+  bool ocean = isOcean(dir, H);
   vec3 land = mix(tex, vec3(0.32, 0.27, 0.19), smoothstep(0.3, 0.8, waterTex));
-  float rock = smoothstep(0.35, 0.7, slope);
-  land = mix(land, land * 0.6 + vec3(0.09, 0.08, 0.07), rock * 0.6);
-  float snow = smoothstep(3800.0, 4800.0, H + 600.0 * n3 - 2500.0 * (1.0 - abs(dir.z))) * (1.0 - rock * 0.7);
-  land = mix(land, vec3(0.8, 0.82, 0.86), snow);
+  // materials below the imagery resolution: bare rock on steep slopes, snow where the imagery
+  // shows it (seasonal) or above a latitude-dependent snowline, broken up by slope and noise
+  float latDeg = abs(lat) * 180.0 / PI;
+  float texMin = min(tex.r, min(tex.g, tex.b));
+  float fine = alb * 2.0;
+  float rock = smoothstep(0.45, 0.85, slope + 0.1 * fine);
+  vec3 rockCol = mix(vec3(0.16, 0.145, 0.13), vec3(0.3, 0.28, 0.26), clamp(0.5 + fine, 0.0, 1.0));
+  land = mix(land, mix(land, rockCol, 0.7), rock);
+  float snowline = 5800.0 * pow(1.0 - smoothstep(22.0, 72.0, latDeg), 1.3);
+  float snowTex = smoothstep(0.45, 0.65, texMin);
+  float snowAlt = smoothstep(snowline, snowline + 600.0, H + 350.0 * n3 + 150.0 * fine);
+  float snow = max(snowTex, snowAlt) * (1.0 - smoothstep(0.6, 1.1, slope + 0.15 * fine));
+  land = mix(land, vec3(0.82, 0.85, 0.9), snow);
   c = land * (0.9 + 0.35 * alb);
-  if (H < 0.0) { // ocean
-    float depth = clamp(-H / 900.0, 0.0, 1.0);
+  if (ocean) { // ocean
+    float depth = clamp(-H / 180.0, 0.0, 1.0);
     c = mix(vec3(0.03, 0.12, 0.13), vec3(0.008, 0.025, 0.06), depth);
     c = mix(c, vec3(0.75, 0.8, 0.85), smoothstep(1.25, 1.35, abs(lat) + 0.05 * n2) * 0.9); // sea ice
     spec = 1.0;
   }
   lights = textureLod(uTexD, uv, lod).r;
-  lights *= lights * (H >= 0.0 ? 1.0 : 0.0);
+  lights *= lights * (ocean ? 0.0 : 1.0);
 #endif
   return c;
 }
@@ -556,6 +638,10 @@ void main() {
     float kv = log2(uLambda0 / (2.0 * D * uVertexCut));
     int k0 = int(max(floor(kv), 0.0));
     float lam = uLambda0 * exp2(-float(k0));
+    gLamTop = uLamTop;
+#ifdef EARTH
+    gLamTop = 2.0 * vDataRes;
+#endif
     float baseMod = regionAmp(dir, 0.0);
     float modAmp = regionAmp(dir, vLowOct);
     for (int k = 0; k < MAX_OCT; k++) {
@@ -614,7 +700,7 @@ void main() {
 #else
   vec3 Gt = Gr - nS * dot(Gr, nS);
 #ifdef EARTH
-  if (H < 0.0) {
+  if (isOcean(dir, H)) {
     // ocean: gentle wave normals from the same fractal (small scales only)
     Gt = vec3(0.0);
     int kw = int(ceil(log2(uLambda0 / 200.0)));

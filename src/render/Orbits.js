@@ -76,7 +76,8 @@ export class Orbits {
       let op = Math.min(1, Math.max(0, (px - 12) / 40)) * lowFade;
       if (body.type === 'moon' && px > 20000) op *= 0.6;
       const isFocus = body.id === focusId;
-      line.material.uniforms.uOpacity.value = op * (isFocus ? 0.9 : body.type === 'moon' ? 0.35 : 0.45);
+      const sameSystem = focusId && (body.parent === focusId || body.id === focusId);
+      line.material.uniforms.uOpacity.value = op * (isFocus ? 0.8 : sameSystem ? 0.3 : body.type === 'moon' ? 0.15 : 0.22);
       line.material.uniforms.uFadeNear.value = Math.max(it.a * 0.004, body.radius * 1000 * 8);
       line.visible = op > 0.001;
       line.matrix.makeTranslation(rel.x, rel.y, rel.z);
