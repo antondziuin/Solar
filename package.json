@@ -1,0 +1,21 @@
+{
+  "name": "solar",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Physically based, infinitely detailed Solar System viewer",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "d3-celestial": "^0.7.35",
+    "three-globe": "^2.45.2",
+    "vite": "^8.3.1"
+  }
+}
