@@ -21,13 +21,21 @@ npm run build      # static site in dist/ (deployable anywhere, e.g. GitHub Page
 - All other moons: JPL mean orbital elements (epoch J2000, local Laplace planes) with the
   node and periapsis precessing at the rate set by the parent's J2 oblateness.
 - Pluto and Charon orbit their common barycentre, which lies outside Pluto.
+- The near-Earth asteroid (99942) Apophis follows a numerically integrated orbit (1950–2120):
+  JPL solution 220 for 2028–2031, including the 13 April 2029 flyby 38 000 km from the Earth,
+  extended backwards and forwards with the Sun, the planets and the Moon, general relativity and
+  the measured Yarkovsky drift. The integration reproduces JPL's close approaches (1990, 1998,
+  2051, 2102) to a few minutes and ~0.0001 AU. Its info card shows the osculating orbit (it turns
+  from an Aten into an Apollo asteroid in 2029), its brightness as seen from Earth and the coming
+  close approaches, with a button to watch the 2029 flyby.
 - The simulation clock runs in real time by default and can go from −1 year/s to +1 year/s.
 
 **Size, shape and orientation**
 - True radii, including oblate giants (Saturn is 10 % flatter at the poles) and triaxial
   small moons (Phobos, Deimos, Amalthea, Hyperion, Proteus).
 - IAU WGCCRE rotation models (pole, prime meridian, retrograde spins, Uranus on its side);
-  tidally locked moons keep the same face towards their planet, Hyperion tumbles.
+  tidally locked moons keep the same face towards their planet, Hyperion tumbles, and Apophis
+  tumbles in its measured non-principal-axis spin state (264 h spin, 27.4 h precession).
 
 **Light**
 - A single point of truth for light: the Sun's irradiance falls off as 1/r², with auto
@@ -80,7 +88,8 @@ chunks are generated entirely on the GPU:
   Phobos, whose real, lumpy shape comes from the Mars Express HRSC model. The irregular moons
   Amalthea, Proteus (Stooke, Voyager/Galileo), Hyperion (Thomas et al., Cassini) and Deimos
   (Ernst et al. 2023) use real plate shape models, ray-cast into radius maps; Amalthea also
-  gets its Galileo map through the model's own texture coordinates. Global maps from
+  gets its Galileo map through the model's own texture coordinates. Apophis uses its radar shape
+  model (Goldstone/Arecibo 2012–2013) and is covered with self-similar boulders like a rubble pile. Global maps from
   Clementine, MESSENGER, Galileo, Voyager, Cassini, New Horizons and Viking give the Moon,
   Mercury, Mars, Phobos, the Galilean moons, Jupiter, Saturn, its icy moons, Titan,
   the Uranian moons, Triton, Pluto and Charon their real appearance, scaled to each body's
@@ -106,6 +115,8 @@ chunks are generated entirely on the GPU:
 | Arrows · `W A S D` | Move · look |
 | `Space` · `[` `]` · `N` | Pause · time rate · jump to now |
 | `B` · `H` | Body list · help |
+
+Focus Apophis and press *Watch the 13 April 2029 flyby* in its info card to see it pass the Earth.
 
 Near a surface the camera co-rotates with the body, so you stay above the same place.
 You can link to a body with a hash, e.g. `…/#saturn`.
@@ -139,6 +150,10 @@ public/         runtime assets produced by scripts/build_assets.py
   (Ernst et al. 2023, Earth Planets Space, CC-BY-4.0) and the Amalthea map (ItzImcool, CC-BY-4.0),
   as distributed with [CelestiaContent](https://github.com/CelestiaProject/CelestiaContent).
   Rebuild with `python3 scripts/build_shape_models.py`.
+- Apophis: radar shape model (Lawrence & Benner 2026, NASA PDS, CC0; after Brozović et al. 2018),
+  spin state (Lee et al. 2022), 2028–2031 trajectory of JPL orbit solution 220 (via CelestiaContent),
+  physical data and close approaches from the JPL Small-Body Database. The orbit table is rebuilt
+  with `python3 scripts/build_apophis.py` (needs `astronomy-engine`, SciPy).
 - Global maps of other moons: [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) (public domain).
 - Lunar albedo map (fallback): [CesiumJS](https://github.com/CesiumGS/cesium) (Apache-2.0).
 - Ephemerides: [Astronomy Engine](https://github.com/cosinekitty/astronomy) (MIT).

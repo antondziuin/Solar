@@ -14,6 +14,7 @@ Output: samples (JD TT, heliocentric ecliptic J2000 position in km as float64, v
 float32) every 4 days, densely around close Earth approaches. The viewer interpolates them with cubic
 Hermite polynomials.
 Run: pip install astronomy-engine scipy; python3 scripts/build_apophis.py
+(set APOPHIS_CACHE=/some/file.npz to keep the tabulated perturber positions between runs)
 """
 import json
 import os
@@ -45,6 +46,13 @@ A2 = -2.902e-14 * AU / DAY**2  # km/s^2 at 1 au
 T0, T1 = 1950.0, 2120.0         # years covered
 
 
+def tt_time(tt_days):
+    """Astronomy Engine time from TT (days since J2000). Time.FromTerrestrialTime() can loop forever
+    (its UT iteration fails to converge, e.g. for tt = -16384.0); positions only need TT, so pass an
+    approximate UT."""
+    return A.Time(tt_days - 69.2 / DAY, tt_days)
+
+
 def year_to_jd(y):
     return J2000 + (y - 2000.0) * 365.25
 
@@ -55,23 +63,31 @@ def ecl(x, y, z):
 
 
 class Planets:
-    """Heliocentric positions of the perturbers on a grid, cubic Hermite in between."""
+    """Heliocentric positions of the perturbers on a common 0.25-day grid (one cubic Hermite spline
+    for all of them), cached in CACHE between runs."""
 
-    def __init__(self, jd0, jd1):
-        self.splines = []
-        for body, gm, step in PERTURBERS:
-            t = np.arange(jd0 - 10, jd1 + 10, step)
-            print(f"  tabulating {body.name}: {len(t)} epochs", flush=True)
-            P = np.empty((len(t), 3)); V = np.empty((len(t), 3))
-            for k, jd in enumerate(t):
-                tm = A.Time.FromTerrestrialTime(jd - J2000)
-                s = A.HelioState(body, tm)
-                P[k] = ecl(s.x, s.y, s.z) * AU
-                V[k] = ecl(s.vx, s.vy, s.vz) * AU / DAY
-            self.splines.append((gm, CubicHermiteSpline(t, P, V * DAY, axis=0)))
+    def __init__(self, jd0, jd1, step=0.25):
+        cache = os.environ.get("APOPHIS_CACHE")
+        t = np.arange(jd0 - 10, jd1 + 10, step)
+        if cache and os.path.exists(cache):
+            z = np.load(cache)
+            t, P, V = z["t"], z["P"], z["V"]
+        else:
+            P = np.empty((len(t), 3 * len(PERTURBERS))); V = np.empty_like(P)
+            for j, (body, gm, _) in enumerate(PERTURBERS):
+                print(f"  tabulating {body.name}: {len(t)} epochs", flush=True)
+                for k, jd in enumerate(t):
+                    st = A.HelioState(body, tt_time(jd - J2000))
+                    P[k, 3 * j:3 * j + 3] = ecl(st.x, st.y, st.z) * AU
+                    V[k, 3 * j:3 * j + 3] = ecl(st.vx, st.vy, st.vz) * AU / DAY
+            if cache:
+                np.savez(cache, t=t, P=P, V=V)
+        self.gm = np.array([gm for _, gm, _ in PERTURBERS])
+        self.spline = CubicHermiteSpline(t, P, V * DAY, axis=0)
+        self.earth = lambda jd, nu=0: self.spline(jd, nu)[6:9]
 
     def at(self, jd):
-        return [(gm, sp(jd)) for gm, sp in self.splines]
+        return self.spline(jd).reshape(-1, 3)
 
 
 def rhs_factory(planets):
@@ -80,9 +96,9 @@ def rhs_factory(planets):
         r, v = y[:3], y[3:]
         rn = np.linalg.norm(r)
         a = -GM_SUN * r / rn**3
-        for gm, rp in planets.at(jd):
-            d = rp - r
-            a += gm * (d / np.linalg.norm(d)**3 - rp / np.linalg.norm(rp)**3)
+        rp = planets.at(jd)
+        d = rp - r
+        a += (planets.gm[:, None] * (d / np.linalg.norm(d, axis=1)[:, None]**3 - rp / np.linalg.norm(rp, axis=1)[:, None]**3)).sum(0)
         # Schwarzschild term of the Sun
         v2 = v @ v
         a += GM_SUN / (C**2 * rn**3) * ((4 * GM_SUN / rn - v2) * r + 4 * (r @ v) * v)
@@ -101,7 +117,7 @@ def integrate(rhs, jd0, y0, jd1):
 
 
 def earth_distance(planets, jd, r):
-    return np.linalg.norm(planets.splines[2][1](jd) - r)
+    return np.linalg.norm(planets.earth(jd) - r)
 
 
 def main():
@@ -111,10 +127,30 @@ def main():
     planets = Planets(jd0, jd1)
     rhs = rhs_factory(planets)
 
-    # 1. through the 2029 flyby: 2028-01-01 -> 2031-01-01, compared with the JPL trajectory
-    mid = integrate(rhs, jd[0], np.concatenate([P[0], V[0]]), jd[-1])
-    err = np.linalg.norm(mid.sol(jd[-1] * DAY)[:3] - P[-1])
-    print(f"2028->2031 through the flyby: {err:.0f} km from the JPL trajectory", flush=True)
+    # 1. 2028-2031: the JPL trajectory itself. Integrating through the 2029 flyby ourselves would
+    # amplify the ~200 km difference between Astronomy Engine's Earth and DE441 into millions of km
+    # by 2031 (the flyby is extremely sensitive). Between the JPL nodes, quintic Hermite
+    # interpolation with the accelerations of our force model resolves the flyby hyperbola.
+    Acc = np.array([rhs(t * DAY, np.concatenate([p, v]))[3:] for t, p, v in zip(jd, P, V)])
+
+    def mid_state(t):
+        i = min(max(np.searchsorted(jd, t) - 1, 0), len(jd) - 2)
+        h = (jd[i + 1] - jd[i]) * DAY
+        u = (t - jd[i]) * DAY / h
+        u2, u3, u4, u5 = u * u, u**3, u**4, u**5
+        H = [1 - 10 * u3 + 15 * u4 - 6 * u5, u - 6 * u3 + 8 * u4 - 3 * u5, 0.5 * u2 - 1.5 * u3 + 1.5 * u4 - 0.5 * u5,
+             10 * u3 - 15 * u4 + 6 * u5, -4 * u3 + 7 * u4 - 3 * u5, 0.5 * u3 - u4 + 0.5 * u5]
+        D = [-30 * u2 + 60 * u3 - 30 * u4, 1 - 18 * u2 + 32 * u3 - 15 * u4, u - 4.5 * u2 + 6 * u3 - 2.5 * u4,
+             30 * u2 - 60 * u3 + 30 * u4, -12 * u2 + 28 * u3 - 15 * u4, 1.5 * u2 - 4 * u3 + 2.5 * u4]
+        pos = H[0] * P[i] + H[1] * h * V[i] + H[2] * h * h * Acc[i] + H[3] * P[i + 1] + H[4] * h * V[i + 1] + H[5] * h * h * Acc[i + 1]
+        vel = (D[0] * P[i] + D[3] * P[i + 1]) / h + D[1] * V[i] + D[4] * V[i + 1] + h * (D[2] * Acc[i] + D[5] * Acc[i + 1])
+        return pos, vel
+
+    # check: a 2-hour arc at closest approach integrated with the force model vs the interpolation
+    k = int(np.argmin([earth_distance(planets, t, p) for t, p in zip(jd, P)]))
+    arc = integrate(rhs, jd[k], np.concatenate([P[k], V[k]]), jd[k + 1])
+    worst = max(np.linalg.norm(arc.sol(t * DAY)[:3] - mid_state(t)[0]) for t in np.linspace(jd[k], jd[k + 1], 25))
+    print(f"flyby arc: quintic interpolation within {worst:.2f} km of the integrated arc", flush=True)
     # 2. backwards from 2028, forwards from 2031 (JPL state)
     back = integrate(rhs, jd[0], np.concatenate([P[0], V[0]]), jd0)
     fwd = integrate(rhs, jd[-1], np.concatenate([P[-1], V[-1]]), jd1)
@@ -123,7 +159,7 @@ def main():
         if t <= jd[0]:
             y = back.sol(t * DAY)
         elif t < jd[-1]:
-            y = mid.sol(t * DAY)
+            return mid_state(t)
         else:
             y = fwd.sol(t * DAY)
         return y[:3], y[3:]
@@ -160,8 +196,11 @@ def main():
             tc = 0.5 * (lo + hi)
             r, v = state(tc)
             dist = earth_distance(planets, tc, r)
-            ve = planets.splines[2][1](tc, 1) / DAY
-            tm = A.Time.FromTerrestrialTime(tc - J2000)
+            ve = planets.earth(tc, 1) / DAY
+            tt = tc - J2000
+            g = A.Time(tt)                      # UT from TT: two fixed-point steps on Delta T
+            g = A.Time(tt - (g.tt - g.ut))
+            tm = A.Time(tt - (g.tt - g.ut))
             cas.append({"jd": tc, "utc": str(tm)[:16].replace("T", " "), "dist_km": round(dist), "v_rel": round(float(np.linalg.norm(v - ve)), 2)})
     for c in cas:
         print(f"  close approach {c['utc']}  {c['dist_km'] / AU:.5f} au  ({c['dist_km']} km)  {c['v_rel']} km/s")

@@ -112,6 +112,8 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uCraterDensity: { value: model.craterDensity },
     uCraterRc: { value: model.craterRc },
     uCraterK0: { value: model.craterK0 },
+    uBoulders: { value: model.boulders },
+    uBoulderK0: { value: model.boulderK0 },
     uFeatA: { value: feat('A') },
     uFeatB: { value: feat('B') },
     uFeatC: { value: feat('C') },

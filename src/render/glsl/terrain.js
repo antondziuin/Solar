@@ -29,6 +29,8 @@ uniform float uTime;
 uniform float uAmp, uHurst, uLamTop, uRidge, uLumpy, uMicro;
 uniform float uCraterStrength, uCraterDensity, uCraterRc;
 uniform int uCraterK0;
+uniform float uBoulders;          // fraction of lattice cells holding a boulder (rubble piles)
+uniform int uBoulderK0;
 uniform vec4 uFeatA[MAX_FEAT];
 uniform vec4 uFeatB[MAX_FEAT];
 uniform vec4 uFeatC[MAX_FEAT];
@@ -117,6 +119,32 @@ void crater(vec3 x, float lam, float w, inout float h, inout vec3 g, inout float
   alb += w * fresh * fresh * fresh * 0.45 * exp(-t * t * 0.9) * (0.4 + 0.6 * smoothstep(0.7, 1.0, t));
 }
 
+// Self-similar boulders (rubble-pile asteroids): at most one per lattice cell per octave, a
+// flattened, irregular dome whose footprint is the intersection of the surface with a ball.
+void boulder(vec3 x, float lam, float w, inout float h, inout vec3 g, inout float alb) {
+  vec3 c = floor(x);
+  vec3 r = hash3(c + 211.0);
+  if (r.x > uBoulders) return;
+  vec3 r2 = hash3(c + 307.0);
+  vec3 r3 = hash3(c + 401.0) - 0.5;
+  vec3 q = x - (c + 0.3 + 0.4 * r2);
+  float d = length(q);
+  vec3 qn = q / max(d, 1e-7);
+  float rad0 = 0.06 + 0.2 * r.y * r.y;
+  if (d > rad0 * 1.8) return;
+  // angular outline: elongation plus a noise-modulated rim
+  float rad = rad0 * (1.0 + 0.45 * dot(qn, r3) + 0.3 * gnoise(qn * 1.9 + r2 * 40.0));
+  float t = d / rad;
+  if (t >= 1.0) return;
+  // flat-topped, steep-sided block
+  float H = rad * lam * (0.4 + 0.35 * r.z);
+  float t25 = pow(t, 2.5);
+  float s = sqrt(max(1.0 - t25, 0.0));
+  h += w * H * s;
+  g += w * H * (-1.25 * t25 / max(t, 1e-4) / max(s, 0.2)) * qn / (rad * lam);
+  alb += w * (r.z - 0.5) * 0.25;
+}
+
 // One octave of terrain.
 void terrainOctave(int k, vec3 x, float lam, float w, float modAmp, inout float h, inout vec3 g, inout float alb) {
   float A = octaveAmp(lam) * modAmp;
@@ -131,6 +159,10 @@ void terrainOctave(int k, vec3 x, float lam, float w, float modAmp, inout float 
   if (k >= uCraterK0 && uCraterStrength > 0.0) {
     crater(x + vec3(31.0, 57.0, 11.0), lam, w, h, g, alb);
     crater(x + vec3(113.5, 7.5, 71.5), lam, w, h, g, alb); // second, offset lattice
+  }
+  if (uBoulders > 0.0 && k >= uBoulderK0) {
+    boulder(x + vec3(71.0, 13.0, 5.0), lam, w, h, g, alb);
+    boulder(x + vec3(17.5, 93.5, 41.5), lam, w, h, g, alb);
   }
 }
 

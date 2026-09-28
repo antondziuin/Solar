@@ -148,7 +148,8 @@ export const BODIES = [
   // Spin: tumbling in short-axis mode (Lee et al. 2022, as in CelestiaContent).
   {
     id: 'apophis', name: 'Apophis', fullName: '99942 Apophis (2004 MN4)', type: 'asteroid', parent: 'sun',
-    radius: 0.205, shape: [0.205, 0.175, 0.159], GM: 3.4e-9, mass: 5.2e10, albedo: 0.35,
+    // mass: radar volume (D = 336 m) at an assumed bulk density of 2.6 g/cm3 (LL-chondrite rubble)
+    radius: 0.205, shape: [0.205, 0.175, 0.159], meanRadius: 0.168, GM: 3.4e-9, mass: 5.2e10, albedo: 0.35,
     ephem: {
       kind: 'table', file: 'bodies/apophis_orbit.json', split: 10695, // days since J2000 (the 2029 flyby)
       before: { epoch: 10226.5, a: 0.9223572143646787 * 149597870.7, e: 0.19119303651035563, i: 3.3411603165696278, node: 203.88565203376578, peri: 126.70637780154587, M: 90.66025867530743 },
@@ -159,7 +160,7 @@ export const BODIES = [
       // inertial frame: x axis, and z = angular momentum (ecliptic lambda 246.8 deg, beta -59.3 deg)
       frameX: [0.3387, 0.7903, -0.5105], frameZ: [-0.2011, -0.4693, -0.8599],
     },
-    surface: { kind: 'rock', amp: 350, hurst: 0.8, ridge: 0.35, crater: 0.25, craterStart: 60, c0: '#7a7468', c1: '#b3ab9b', albedoNoise: 0.25, seed: 99, lumpy: 0.05 },
+    surface: { kind: 'rock', amp: 250, hurst: 0.8, ridge: 0.35, crater: 0.2, craterStart: 60, boulders: 0.5, boulderStart: 40, c0: '#6f6a60', c1: '#a39c8e', albedoNoise: 0.25, seed: 99, lumpy: 0.04 },
     info: {
       rotation: 'tumbling: 264.2 h spin, 27.39 h precession',
       temp: '~230–300 K',

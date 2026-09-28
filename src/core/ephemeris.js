@@ -210,8 +210,16 @@ export class Ephemeris {
     await Promise.all(this.bodies.filter((b) => b.ephem.kind === 'table').map(async (b) => {
       const meta = await fetch(base + b.ephem.file).then((r) => r.json());
       const buf = await fetch(base + meta.file).then((r) => r.arrayBuffer());
-      b.ephem.table = new TrajectoryTable(buf);
+      const table = new TrajectoryTable(buf);
+      b.ephem.table = table;
       b.ephem.meta = meta;
+      // beyond the table: osculating elements at its ends (continuous at the boundaries)
+      const sun = this.byId[b.parent];
+      const p = new Vector3(), v = new Vector3();
+      for (const [key, t] of [['before', table.t0], ['after', table.t1]]) {
+        table.state(t, p, v);
+        b.ephem[key] = elementsFromState(p, v, (sun.GM + (b.GM || 0)) * 1e9, t);
+      }
     }));
   }
 
@@ -393,4 +401,23 @@ export function osculatingElements(b, parent) {
   if (ev.z < 0) peri = 360 - peri;
   const period = a > 0 ? (2 * Math.PI * Math.sqrt(a ** 3 / GM)) / DAY : Infinity;
   return { a, e, i, node, peri, q: a * (1 - e), Q: a * (1 + e), period };
+}
+
+/** Kepler elements (ecliptic J2000; a in km, angles in degrees, epoch in days) from a world state. */
+function elementsFromState(pos, vel, GM, epoch) {
+  const r = new Vector3(pos.x, -pos.z, pos.y), v = new Vector3(vel.x, -vel.z, vel.y);
+  const rl = r.length();
+  const a = 1 / (2 / rl - v.lengthSq() / GM);
+  const h = new Vector3().crossVectors(r, v);
+  const ev = new Vector3().crossVectors(v, h).divideScalar(GM).addScaledVector(r, -1 / rl);
+  const e = ev.length();
+  const i = Math.acos(h.z / h.length());
+  const node = Math.atan2(h.x, -h.y);
+  const nv = new Vector3(Math.cos(node), Math.sin(node), 0);
+  const q = new Vector3().crossVectors(h, nv).normalize(); // in-plane, 90 deg from the node
+  const peri = Math.atan2(ev.dot(q), ev.dot(nv));
+  const nu = Math.atan2(r.dot(new Vector3().crossVectors(h, ev).normalize()), r.dot(ev) / e);
+  const E = 2 * Math.atan(Math.sqrt((1 - e) / (1 + e)) * Math.tan(nu / 2));
+  const M = E - e * Math.sin(E);
+  return { epoch, a: a / KM, e, i: i / DEG, node: node / DEG, peri: peri / DEG, M: M / DEG };
 }

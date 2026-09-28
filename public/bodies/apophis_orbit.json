@@ -1,0 +1,44 @@
+{
+ "file": "bodies/apophis_orbit.bin",
+ "from": 1950.0,
+ "to": 2120.0,
+ "closeApproaches": [
+  {
+   "jd": 2447996.362925105,
+   "utc": "1990-04-14 20:41",
+   "dist_km": 4923009,
+   "v_rel": 6.84
+  },
+  {
+   "jd": 2450918.321306537,
+   "utc": "1998-04-14 19:41",
+   "dist_km": 3648835,
+   "v_rel": 6.59
+  },
+  {
+   "jd": 2462240.4077905584,
+   "utc": "2029-04-13 21:45",
+   "dist_km": 38199,
+   "v_rel": 7.42
+  },
+  {
+   "jd": 2470281.596350166,
+   "utc": "2051-04-20 02:17",
+   "dist_km": 6216527,
+   "v_rel": 4.69
+  },
+  {
+   "jd": 2489053.3943320774,
+   "utc": "2102-09-11 21:24",
+   "dist_km": 3490716,
+   "v_rel": 5.67
+  },
+  {
+   "jd": 2494015.709358055,
+   "utc": "2116-04-13 04:57",
+   "dist_km": 2108398,
+   "v_rel": 6.29
+  }
+ ],
+ "source": "JPL solution 220 trajectory 2028-2031 (via CelestiaContent), N-body integration with Astronomy Engine perturbers, GR and Yarkovsky"
+}

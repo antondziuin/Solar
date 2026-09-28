@@ -275,7 +275,8 @@ export class UI {
     if (!b) return;
     const eph = this.app.ephem;
     const parent = b.parent ? eph.byId[b.parent] : null;
-    const R = b.radius * KM;
+    // mean (volume-equivalent) radius: given, or from the triaxial shape
+    const R = (b.meanRadius || (b.shape ? Math.cbrt(b.shape[0] * b.shape[1] * b.shape[2]) : b.radius)) * KM;
     const g = (b.GM * 1e9) / (R * R);
     const vesc = Math.sqrt((2 * b.GM * 1e9) / R) / 1000;
     const density = b.mass / ((4 / 3) * Math.PI * R ** 3) / 1000;
@@ -286,8 +287,8 @@ export class UI {
     rows.push(['Radius', b.polarRadius ? `${b.radius.toLocaleString()} × ${b.polarRadius.toLocaleString()} km` : b.shape ? `${b.shape.join(' × ')} km` : `${b.radius.toLocaleString()} km`]);
     rows.push(['Mass', sci(b.mass, 'kg')]);
     rows.push(['Mean density', `${density.toFixed(2)} g/cm³`]);
-    rows.push(['Surface gravity', `${g.toFixed(g < 1 ? 3 : 2)} m/s²`]);
-    rows.push(['Escape velocity', `${vesc.toFixed(vesc < 1 ? 3 : 2)} km/s`]);
+    rows.push(['Surface gravity', g < 0.01 ? `${(g * 1000).toPrecision(2)} mm/s²` : `${g.toFixed(g < 1 ? 3 : 2)} m/s²`]);
+    rows.push(['Escape velocity', vesc < 0.1 ? `${(vesc * 1000).toPrecision(2)} m/s` : `${vesc.toFixed(vesc < 1 ? 3 : 2)} km/s`]);
     rows.push(['Rotation', b.info?.rotation || '—']);
     if (parent) rows.push([parent.type === 'star' ? 'Orbital period' : `Period around ${parent.name}`, formatDuration(orbitalPeriodDays(b, parent))]);
     if (b.type !== 'star') rows.push(['Distance to Sun', formatDistance(dSun)]);
