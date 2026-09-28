@@ -178,6 +178,17 @@ def save_map(bid, img, ok):
     if bid in MAP_LAT_LIMIT:
         lat = 90.0 - 180.0 * (np.arange(ok2.shape[0]) + 0.5) / ok2.shape[0]
         ok2 = ok2 & (np.abs(lat) < MAP_LAT_LIMIT[bid])[:, None]
+    # fill pinholes (isolated bad pixels) from their neighbours; large gaps stay no-data
+    img = img.copy()
+    for _ in range(3):
+        acc = np.zeros_like(img); cnt = np.zeros(ok2.shape)
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            m = np.roll(ok2, (dy, dx), (0, 1))
+            acc += np.where(m[..., None], np.roll(img, (dy, dx), (0, 1)), 0)
+            cnt += m
+        fill = ~ok2 & (cnt >= 3)
+        img[fill] = acc[fill] / cnt[fill][:, None]
+        ok2 = ok2 | fill
     # stretch to the valid range, keep no-data black (the viewer treats black as "no data")
     v = img[ok2]
     # scale only (no offset): keeps the albedo ratios of photometric mosaics

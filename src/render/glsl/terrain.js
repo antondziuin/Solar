@@ -558,7 +558,7 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
       // bright -> uColor1 hue), keeping the measured brightness
       vec3 t0 = uColor0 / max(dot(uColor0, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
       vec3 t1 = uColor1 / max(dot(uColor1, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
-      vec3 tint = mix(t0, t1, smoothstep(0.45, 1.25, ml / uMapGray.y));
+      vec3 tint = mix(t0, t1, smoothstep(0.3, 1.0, ml / uMapGray.y));
       m = ml * mix(vec3(1.0), tint, uMapGray.x);
     }
     vec3 mc = m * uMapGain * (0.8 + 0.4 * clamp(0.5 + alb * 2.0, 0.0, 1.0));
