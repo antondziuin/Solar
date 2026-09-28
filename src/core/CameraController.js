@@ -32,7 +32,7 @@ export class CameraController {
   // ---------------------------------------------------------------- frames
   frame(body, locked, out = new THREE.Matrix3()) {
     if (locked) return out.copy(body.state.rot);
-    const z = body.state.pole.clone();
+    const z = (body.state.inertialPole || body.state.pole).clone();
     let x = new THREE.Vector3().crossVectors(Y_UP, z);
     if (x.lengthSq() < 1e-8) x.set(1, 0, 0);
     x.normalize();

@@ -91,6 +91,7 @@ class App {
     ]);
 
     setText('Building worlds…');
+    try { await this.ephem.loadTables(BASE); } catch (e) { console.warn('trajectory tables', e); }
     this.ephem.update(this.clock.ut);
     for (const b of BODIES) {
       const model = new TerrainModel(b);
@@ -163,6 +164,24 @@ class App {
     Object.assign(c.t, c.s);
     this.ui.setActive(b);
     this.exposure = this._exposureFor(b);
+  }
+
+  /**
+   * Apophis' Earth flyby of 13 April 2029: go to 20:00 UTC at 1 min/s and look at the asteroid
+   * from its sunlit side with the Earth behind it (closest approach 21:46 UTC, 38 000 km).
+   */
+  apophisFlyby() {
+    this.clock.setDate(new Date(Date.UTC(2029, 3, 13, 20, 0, 0)));
+    this.ui.setRate(60);
+    this.ephem.update(this.clock.ut);
+    const a = this.ephem.byId.apophis, e = this.ephem.byId.earth;
+    const away = a.state.pos.clone().sub(e.state.pos).normalize();
+    const sun = a.state.pos.clone().negate().normalize();
+    const dir = away.addScaledVector(sun, 0.8).normalize();
+    this.view('apophis', { alt: 1500, locked: false });
+    const F = this.controller.frame(a, false, new THREE.Matrix3());
+    const p = dir.applyMatrix3(F.clone().transpose());
+    this.view('apophis', { alt: 1500, lat: Math.asin(p.z) * 180 / Math.PI, lon: Math.atan2(p.y, p.x) * 180 / Math.PI, locked: false });
   }
 
   setDetail(v) {

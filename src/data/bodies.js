@@ -140,6 +140,34 @@ export const BODIES = [
     info: { rotation: 'synchronous', temp: '~233 K', description: 'Mars’ small outer moon, smoothed by a thick regolith blanket.' },
   },
 
+  // ─────────────────────── (99942) Apophis ───────────────────────
+  // Orbit: JPL solution 220 (2028–2031 trajectory via CelestiaContent) integrated 1950–2120 with the
+  // planets, the Moon, GR and the Yarkovsky drift (scripts/build_apophis.py). Outside that span, and
+  // until the table is loaded, the osculating elements of 2028 Jan 1 / 2031 Jan 1 are used.
+  // Shape: radar model (Brozović et al. 2018; PDS V1.0, Lawrence & Benner 2026), 340 m across.
+  // Spin: tumbling in short-axis mode (Lee et al. 2022, as in CelestiaContent).
+  {
+    id: 'apophis', name: 'Apophis', fullName: '99942 Apophis (2004 MN4)', type: 'asteroid', parent: 'sun',
+    radius: 0.205, shape: [0.205, 0.175, 0.159], GM: 3.4e-9, mass: 5.2e10, albedo: 0.35,
+    ephem: {
+      kind: 'table', file: 'bodies/apophis_orbit.json', split: 10695, // days since J2000 (the 2029 flyby)
+      before: { epoch: 10226.5, a: 0.9223572143646787 * 149597870.7, e: 0.19119303651035563, i: 3.3411603165696278, node: 203.88565203376578, peri: 126.70637780154587, M: 90.66025867530743 },
+      after: { epoch: 11322.5, a: 1.1030183834892897 * 149597870.7, e: 0.18902907544671738, i: 2.22097364118824, node: 203.55081339531046, peri: 71.42070981715298, M: 121.90567085352633 },
+    },
+    rotation: {
+      kind: 'precessing', epoch: 4739.676388, period: 264.178, precession: -27.38547, inclination: 17.8, node: 133.8, meridian: 55.6,
+      // inertial frame: x axis, and z = angular momentum (ecliptic lambda 246.8 deg, beta -59.3 deg)
+      frameX: [0.3387, 0.7903, -0.5105], frameZ: [-0.2011, -0.4693, -0.8599],
+    },
+    surface: { kind: 'rock', amp: 350, hurst: 0.8, ridge: 0.35, crater: 0.25, craterStart: 60, c0: '#7a7468', c1: '#b3ab9b', albedoNoise: 0.25, seed: 99, lumpy: 0.05 },
+    info: {
+      rotation: 'tumbling: 264.2 h spin, 27.39 h precession',
+      temp: '~230–300 K',
+      description: 'A 340 m Sq-type rubble pile. On 13 April 2029 it will pass 38 000 km from Earth’s centre — inside the ring of geostationary satellites and visible to the naked eye (mag 3) — and Earth’s gravity will turn it from an Aten into an Apollo asteroid. Impact is ruled out for at least the next 100 years.',
+      H: 19.09, G: 0.24, spectral: 'Sq', moid: 0.000108,
+    },
+  },
+
   // ─────────────────────────── Jupiter ───────────────────────────
   {
     id: 'jupiter', name: 'Jupiter', type: 'planet', parent: 'sun',

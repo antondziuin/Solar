@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AU, C_LIGHT, KM } from '../core/constants.js';
-import { orbitalPeriodDays } from '../core/ephemeris.js';
+import { orbitalPeriodDays, osculatingElements } from '../core/ephemeris.js';
 
 const RATES = [-31557600, -2629800, -604800, -86400, -21600, -3600, -600, -60, -1, 1, 60, 600, 3600, 21600, 86400, 604800, 2629800, 31557600];
 
@@ -43,11 +43,12 @@ export class UI {
     this._buildBodies();
     this._buildLabels();
     this._bindTime();
+    this.$('info').addEventListener('click', (e) => { if (e.target.dataset?.flyby) this.app.apophisFlyby(); });
     this._bindSettings();
     this._lastInfo = 0;
     const info = this.$('info');
     if (window.innerWidth < 720) info.classList.add('collapsed');
-    info.addEventListener('click', () => info.classList.toggle('collapsed'));
+    info.addEventListener('click', (e) => { if (!e.target.closest('button')) info.classList.toggle('collapsed'); });
   }
 
   _dotColor(b) {
@@ -199,6 +200,15 @@ export class UI {
     setRate();
   }
 
+  /** Set the time rate (s/s) to the nearest preset and run. */
+  setRate(r) {
+    let best = 0;
+    RATES.forEach((x, i) => { if (Math.abs(Math.log(Math.abs(x)) - Math.log(Math.abs(r))) < Math.abs(Math.log(Math.abs(RATES[best])) - Math.log(Math.abs(r))) && Math.sign(x) === Math.sign(r)) best = i; });
+    this.rateIndex = best;
+    this.app.clock.paused = false;
+    this._setRate();
+  }
+
   _bindSettings() {
     const app = this.app;
     const pop = (btn, id, other) => this.$(btn).addEventListener('click', () => { this.$(id).hidden = !this.$(id).hidden; this.$(other).hidden = true; });
@@ -235,13 +245,24 @@ export class UI {
     this.$('date').textContent = `${iso.slice(0, 10)}  ${iso.slice(11, 19)} UTC`;
   }
 
+  _typeText(b, parent) {
+    if (b.type === 'star') return 'Star';
+    if (b.type === 'moon') return `Moon of ${parent.name}`;
+    if (b.type === 'dwarf') return 'Dwarf planet';
+    if (b.type === 'asteroid') {
+      const o = osculatingElements(b, parent);
+      const cls = o.a < AU ? (o.Q > 0.983 * AU ? 'Aten' : 'Atira') : o.q < 1.017 * AU ? 'Apollo' : o.q < 1.3 * AU ? 'Amor' : 'main-belt';
+      return `Near-Earth asteroid · ${cls}`;
+    }
+    return 'Planet';
+  }
+
   updateHUD() {
     const c = this.app.controller;
     const b = c.focus;
     if (!b) return;
     const parent = b.parent ? this.app.ephem.byId[b.parent] : null;
-    const typeText = b.type === 'star' ? 'Star' : b.type === 'moon' ? `Moon of ${parent.name}` : b.type === 'dwarf' ? 'Dwarf planet' : 'Planet';
-    this.$('focus-sub').textContent = typeText;
+    this.$('focus-sub').textContent = this._typeText(b, parent);
     const alt = c.altitude ?? 0;
     const label = b.surface.kind === 'gas' ? 'above cloud tops' : b.type === 'star' ? 'above photosphere' : 'altitude';
     this.$('focus-alt').textContent = `${formatDistance(alt)} ${label}${c.locked ? ' · co-rotating' : ''}`;
@@ -274,7 +295,50 @@ export class UI {
     if (b.id !== 'earth') rows.push(['Distance to Earth', formatDistance(dEarth)]);
     if (b.id !== 'earth') rows.push(['Light time from Earth', formatDuration(dEarth / C_LIGHT / 86400)]);
     rows.push(['Temperature', b.info?.temp || '—']);
-    const typeText = b.type === 'star' ? 'G2V star' : b.type === 'moon' ? `Moon of ${parent.name}` : b.type === 'dwarf' ? 'Dwarf planet' : 'Planet';
-    this.$('info').innerHTML = `<h2>${b.name}</h2><div class="type">${typeText}</div><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table><p>${b.info?.description || ''}</p>`;
+    let extra = '';
+    if (b.type === 'asteroid') extra = this._asteroidInfo(b, parent, dEarth, rows);
+    const typeText = b.type === 'star' ? 'G2V star' : this._typeText(b, parent);
+    this.$('info').innerHTML = `<h2>${b.fullName || b.name}</h2><div class="type">${typeText}</div><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>${extra}<p>${b.info?.description || ''}</p>`;
+  }
+
+  /** Orbit, photometry and close approaches of an asteroid (adds rows, returns extra HTML). */
+  _asteroidInfo(b, parent, dEarth, rows) {
+    const o = osculatingElements(b, parent);
+    const i = b.info;
+    const ld = 384400e3;
+    // apparent magnitude (IAU H, G system)
+    const r = b.state.pos.length() / AU, d = dEarth / AU;
+    const toSun = b.state.pos.clone().negate().normalize();
+    const toEarth = this.app.ephem.byId.earth.state.pos.clone().sub(b.state.pos).normalize();
+    const alpha = Math.acos(Math.max(-1, Math.min(1, toSun.dot(toEarth))));
+    const t = Math.tan(alpha / 2);
+    const phi1 = Math.exp(-3.33 * t ** 0.63), phi2 = Math.exp(-1.87 * t ** 1.22);
+    const V = i.H + 5 * Math.log10(r * d) - 2.5 * Math.log10((1 - i.G) * phi1 + i.G * phi2);
+    rows.splice(rows.findIndex((x) => x[0] === 'Temperature'), 0,
+      ['Brightness from Earth', `mag ${V.toFixed(1)} (phase ${(alpha * 180 / Math.PI).toFixed(0)}°)`],
+      ['Absolute magnitude H', `${i.H} · albedo ${b.albedo} · ${i.spectral}-type`]);
+    const orbit = [
+      ['Semi-major axis a', `${(o.a / AU).toFixed(4)} AU`],
+      ['Eccentricity e', o.e.toFixed(4)],
+      ['Inclination i', `${o.i.toFixed(3)}°`],
+      ['Perihelion q · aphelion Q', `${(o.q / AU).toFixed(4)} · ${(o.Q / AU).toFixed(4)} AU`],
+      ['Node Ω · perihelion ω', `${o.node.toFixed(2)}° · ${o.peri.toFixed(2)}°`],
+      ['Earth MOID (2024)', `${i.moid} AU (${formatDistance(i.moid * AU)})`],
+    ];
+    let html = `<h3>Osculating orbit (J2000 ecliptic)</h3><table>${orbit.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`;
+    const cas = b.ephem.meta?.closeApproaches;
+    if (cas) {
+      const now = this.app.clock.ut + 2451545;
+      const next = cas.filter((c) => c.jd > now - 1).slice(0, 4);
+      if (next.length) {
+        html += `<h3>Close approaches to Earth</h3><table>${next.map((c) => {
+          const dist = c.dist_km * 1000;
+          const far = dist > 0.01 * AU ? `${(dist / AU).toFixed(4)} AU` : `${Math.round(c.dist_km).toLocaleString('en-US')} km`;
+          return `<tr><td>${c.utc} UTC</td><td>${far} · ${(dist / ld).toFixed(dist < ld ? 2 : 1)} LD · ${c.v_rel} km/s</td></tr>`;
+        }).join('')}</table>`;
+      }
+      if (now < 2462240.4) html += '<button class="flyby" data-flyby="1">Watch the 13 April 2029 flyby ▸</button>';
+    }
+    return html;
   }
 }

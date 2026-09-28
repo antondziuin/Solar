@@ -88,6 +88,11 @@ canvas#view:active { cursor: grabbing; }
 #info { cursor: pointer; }
 #info .type::after { content: " · details"; color: var(--fg-faint); }
 #info:not(.collapsed) .type::after { content: ""; }
+#info h3 { margin: 12px 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-faint); }
+#info .flyby { margin-top: 10px; width: 100%; padding: 7px 10px; border: 1px solid rgba(255, 207, 107, 0.35); border-radius: 8px; background: rgba(255, 207, 107, 0.1); color: var(--accent); font: inherit; cursor: pointer; }
+#info .flyby:hover { background: rgba(255, 207, 107, 0.2); }
+#info.collapsed h3, #info.collapsed .flyby { display: none; }
+.label.asteroid { font-size: 11px; color: rgba(225, 200, 150, 0.85); }
 
 /* time bar */
 #timebar {
