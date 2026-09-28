@@ -8,7 +8,7 @@ import { MAX_OCTAVES, MAX_OCCLUDERS } from './glsl/terrain.js';
 
 export const SUN_COLOR = new THREE.Vector3(1.0, 0.97, 0.94);
 const GRID_N = 32;
-const SPLIT_K = 1.5;
+const SPLIT_K = 1.1;
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -27,6 +27,7 @@ export class BodyView {
       gridN: GRID_N,
       splitK: SPLIT_K,
       horizonCull: true,
+      model,
     });
     this.lod.mesh.renderOrder = 1;
     this.lod.mesh.name = body.id;
@@ -139,7 +140,7 @@ export class BodyView {
     this.lod.update(this.camPF, this.relCam, s.rot, ctx.frustum, this.groundH);
     U.uRot.value.copy(s.rot);
     U.uCamPF.value.copy(this.camPF);
-    U.uVertexCut.value = 4 / (SPLIT_K * GRID_N);
+    U.uVertexCut.value = 4 / (this.lod.splitK * GRID_N);
     U.uPixelCut.value = ctx.pixelAngle * 1.5;
     U.uTime.value = ctx.time;
     U.uAmbient.value = ctx.ambient;
@@ -189,8 +190,8 @@ export class BodyView {
       }
       for (let i = 0; i < MAX_OCCLUDERS; i++) { C.uOcc.value[i].copy(U.uOcc.value[i]); C.uOccTint.value[i].copy(U.uOccTint.value[i]); }
     }
-    if (this.atmo) this.atmo.update(this.relCam, s.rot, s.rotInv, this.camPF, U.uSunDir.value, sunIrr);
-    if (this.rings) this.rings.update(this.relCam, s.rot, s.rotInv, this.camPF, U.uSunDir.value, sunIrr, ctx.pixelAngle * 1.5);
+    if (this.atmo) this.atmo.update(this.relCam, s.rot, s.rotInv, this.camPF, U.uSunDir.value, sunIrr, ctx.invViewProj, ctx.resolution);
+    if (this.rings) this.rings.update(this.relCam, s.rot, s.rotInv, this.camPF, U.uSunDir.value, sunIrr, ctx.pixelAngle * 1.5, ctx.invViewProj, ctx.resolution);
     this.setVisible(true);
   }
 }

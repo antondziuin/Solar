@@ -58,7 +58,10 @@ export class SphereLOD {
    * @param {object} opts
    *  radii: [a,b,c] metres; maxRelief: metres; material: ShaderMaterial
    */
-  constructor({ radii, maxRelief = 0, material, gridN = 32, maxInstances = 3000, splitK = 1.5, minEdge = 0.15, horizonCull = true }) {
+  constructor({ radii, maxRelief = 0, material, gridN = 32, maxInstances = 3000, splitK = 1.5, minEdge = 0.15, horizonCull = true, model = null }) {
+    this.model = model; // optional terrain model: per-node centre heights and relief bounds
+    this._hCache = new Map();
+    this._reliefL = [];
     this.radii = radii;
     this.R = Math.max(...radii);
     this.Rmin = Math.min(...radii);
@@ -67,6 +70,10 @@ export class SphereLOD {
     this.splitK = splitK;
     this.horizonCull = horizonCull;
     this.maxLevel = Math.min(30, Math.ceil(Math.log2((Math.PI / 2) * this.R / minEdge)));
+    for (let l = 0; l <= this.maxLevel; l++) {
+      const edge = 2 * (Math.PI / 4) * this.R / 2 ** l;
+      this._reliefL.push(model && model.reliefBelow ? Math.min(maxRelief, model.reliefBelow(edge)) : maxRelief);
+    }
     this.maxInstances = maxInstances;
 
     const g = buildGrid(gridN);
@@ -91,6 +98,19 @@ export class SphereLOD {
     this._d = [0, 0, 0];
     this._v = new THREE.Vector3();
     this._sphere = new THREE.Sphere();
+  }
+
+  /** Terrain height at a node centre (cached; the terrain is static apart from streamed DEM). */
+  _centreHeight(face, u, v, level, d, edge) {
+    if (!this.model || this.model.kind !== 'rock') return 0;
+    const key = face * 1e12 + level * 1e10 + Math.round((u + 1) * 32768) * 65537 + Math.round((v + 1) * 32768);
+    let h = this._hCache.get(key);
+    if (h === undefined) {
+      h = this.model.groundHeight(d[0], d[1], d[2], Math.max(edge / 4, 0.25));
+      if (this._hCache.size > 30000) this._hCache.clear();
+      this._hCache.set(key, h);
+    }
+    return h;
   }
 
   /**
@@ -122,8 +142,10 @@ export class SphereLOD {
         const gamma = Math.acos(Math.max(-1, Math.min(1, cosG)));
         if (gamma - beta > alphaC + alphaN) return;
       }
-      const px = ra * d[0], py = rb * d[1], pz = rc * d[2];
-      const nodeR = R * beta * 1.05 + this.maxRelief;
+      const edge = 2 * half * (Math.PI / 4) * R;
+      const hc = this._centreHeight(face, u, v, level, d, edge);
+      const px = ra * d[0] + d[0] * hc, py = rb * d[1] + d[1] * hc, pz = rc * d[2] + d[2] * hc;
+      const nodeR = R * beta * 1.05 + this._reliefL[level];
       // frustum culling (world, camera relative)
       if (level > 0) {
         const wx = e[0] * px + e[3] * py + e[6] * pz + bodyRelCam.x;
@@ -133,8 +155,8 @@ export class SphereLOD {
         this._sphere.radius = nodeR;
         if (!frustum.intersectsSphere(this._sphere)) return;
       }
-      const edge = 2 * half * (Math.PI / 4) * R;
-      const gx = px + d[0] * groundH - camPF.x, gy = py + d[1] * groundH - camPF.y, gz = pz + d[2] * groundH - camPF.z;
+      const gh = this.model ? 0 : groundH;
+      const gx = px + d[0] * gh - camPF.x, gy = py + d[1] * gh - camPF.y, gz = pz + d[2] * gh - camPF.z;
       const dist = Math.max(Math.hypot(gx, gy, gz) - R * beta, 0);
       if (level < this.maxLevel && dist < this.splitK * edge) {
         const h2 = half / 2;

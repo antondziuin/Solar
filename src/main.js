@@ -44,7 +44,7 @@ async function loadImageData(url) {
 class App {
   constructor() {
     this.canvas = document.getElementById('view');
-    this.settings = { ev: 0, ambient: 0, bloom: 0.5, detail: 1.5, resolution: 1 };
+    this.settings = { ev: 0, ambient: 0, bloom: 0.5, detail: 1.1, resolution: 1 };
     this.autoScale = 1; // dynamic resolution (<= 1), applied on top of the user setting
     this._ftAvg = 16;
     this._ftCheck = 0;
@@ -213,6 +213,25 @@ class App {
     this.exposure = Math.exp(Math.log(this.exposure) + (Math.log(target) - Math.log(this.exposure)) * k);
   }
 
+  /** Distance to the closest thing that could be drawn (surfaces, ring planes), for the near plane. */
+  _nearestGeometry(alt) {
+    let d = alt;
+    const cam = this.controller.position;
+    for (const v of this.viewList) {
+      const b = v.body;
+      const rel = cam.clone().sub(b.state.pos);
+      const r = rel.length();
+      d = Math.min(d, Math.max(r - v.model.R - v.model.maxRelief, 0.05));
+      if (v.rings) {
+        const p = rel.applyMatrix3(b.state.rotInv);
+        const rr = Math.hypot(p.x, p.y);
+        const radial = rr < v.rings.inner ? v.rings.inner - rr : rr > v.rings.outer ? rr - v.rings.outer : 0;
+        d = Math.min(d, Math.max(Math.hypot(radial, p.z), 0.05));
+      }
+    }
+    return d;
+  }
+
   /** Keep the frame time reasonable on slower GPUs by scaling the render resolution. */
   _dynamicResolution(rawDt) {
     if (rawDt > 0.5) return; // tab was hidden / stalled
@@ -251,7 +270,7 @@ class App {
     const cam = this.camera;
     const camPos = this.controller.position;
     const alt = Math.max(this.controller.altitude ?? 1e6, 0.1);
-    cam.near = Math.min(Math.max(alt * 0.1, 0.02), 1e5);
+    cam.near = Math.min(Math.max(this._nearestGeometry(alt) * 0.1, 0.01), 1e5);
     cam.updateProjectionMatrix();
     cam.position.set(0, 0, 0);
     cam.updateMatrixWorld(true);
@@ -259,11 +278,20 @@ class App {
     this.frustum.setFromProjectionMatrix(this._projScreen);
 
     const frustum = this.frustum;
+    // per-pixel view rays: columns = right * tan(fovx/2), up * tan(fovy/2), forward (world)
+    const ty = Math.tan((cam.fov * Math.PI) / 360), tx = ty * cam.aspect;
+    const me = cam.matrixWorld.elements;
+    this._invViewProj = (this._invViewProj || new THREE.Matrix3()).set(
+      me[0] * tx, me[4] * ty, -me[8],
+      me[1] * tx, me[5] * ty, -me[9],
+      me[2] * tx, me[6] * ty, -me[10]);
+    this._resolution = this.renderer.getDrawingBufferSize(this._resolution || new THREE.Vector2());
     const sphere = new THREE.Sphere();
     const ctx = {
       camPos, frustum, pixelAngle: this.pixelAngle, pixelRatio: this.pixelRatio, exposure: this.exposure,
       time: now / 1000, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
+      invViewProj: this._invViewProj, resolution: this._resolution,
       cameraFacing: (rel, r) => { sphere.center.copy(rel); sphere.radius = r; return frustum.intersectsSphere(sphere); },
     };
     for (const v of this.viewList) v.update(ctx);

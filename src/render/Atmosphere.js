@@ -26,10 +26,13 @@ uniform vec3 uCamPF;   // km, body frame
 uniform vec3 uSunDir;  // body frame
 uniform vec3 uSunIrr;
 uniform float uExposureComp;
+uniform mat3 uRayBasis; // camera right*tan, up*tan, forward: exact per-pixel view rays
+uniform vec2 uResolution;
 in vec3 vWorld;
 void main() {
   #include <logdepthbuf_fragment>
-  vec3 rd = normalize(uRotInv * normalize(vWorld));
+  vec3 ray = uRayBasis * vec3(gl_FragCoord.xy / uResolution * 2.0 - 1.0, 1.0);
+  vec3 rd = normalize(uRotInv * normalize(ray));
   vec3 ro = uCamPF * uAtmoScale;
   rd = normalize(rd * uAtmoScale);
   vec3 L = normalize(uSunDir * uAtmoScale);
@@ -63,6 +66,8 @@ export class AtmosphereShell {
       uSunDir: { value: new THREE.Vector3() },
       uSunIrr: { value: new THREE.Vector3() },
       uExposureComp: { value: 1 },
+      uRayBasis: { value: new THREE.Matrix3() },
+      uResolution: { value: new THREE.Vector2(1, 1) },
       uSunPos: { value: new THREE.Vector3() },
       uSunRadius: { value: 695700 },
       uOcc: { value: [] },
@@ -100,7 +105,9 @@ export class AtmosphereShell {
   }
 
   /** relCam: body centre relative to camera (world); rot: body->world Matrix3 */
-  update(relCam, rot, rotInv, camPF, sunDirPF, sunIrr) {
+  update(relCam, rot, rotInv, camPF, sunDirPF, sunIrr, invViewProj, resolution) {
+    this.material.uniforms.uRayBasis.value.copy(invViewProj);
+    this.material.uniforms.uResolution.value.copy(resolution);
     if (this._surfaceU) {
       this.material.uniforms.uOccCount.value = this._surfaceU.uOccCount.value;
       this.material.uniforms.uSunRadius.value = this._surfaceU.uSunRadius.value;

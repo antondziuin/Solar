@@ -34,11 +34,14 @@ uniform float uAlbedo;
 uniform vec3 uPlanetRadii; // m
 uniform float uPixelCut;
 uniform float uLambda0;
+uniform mat3 uRayBasis; // camera right*tan, up*tan, forward: exact per-pixel view rays
+uniform vec2 uResolution;
 in vec3 vWorld;
 
 void main() {
   #include <logdepthbuf_fragment>
-  vec3 d = uRotInv * normalize(vWorld);
+  vec3 ray = uRayBasis * vec3(gl_FragCoord.xy / uResolution * 2.0 - 1.0, 1.0);
+  vec3 d = uRotInv * normalize(ray);
   if (abs(d.z) < 1e-7) discard;
   float t = -uCamPF.z / d.z;
   if (t <= 0.0) discard;
@@ -149,6 +152,8 @@ export class RingView {
         uPlanetRadii: { value: new THREE.Vector3(body.radius * 1000, body.radius * 1000, (body.polarRadius || body.radius) * 1000) },
         uPixelCut: { value: 0.002 },
         uLambda0: { value: this.lambda0 },
+        uRayBasis: { value: new THREE.Matrix3() },
+        uResolution: { value: new THREE.Vector2(1, 1) },
       },
       side: THREE.DoubleSide,
       transparent: true,
@@ -165,7 +170,9 @@ export class RingView {
     this.mesh.renderOrder = 4;
   }
 
-  update(relCam, rot, rotInv, camPF, sunDirPF, sunIrr, pixelCut) {
+  update(relCam, rot, rotInv, camPF, sunDirPF, sunIrr, pixelCut, invViewProj, resolution) {
+    this.material.uniforms.uRayBasis.value.copy(invViewProj);
+    this.material.uniforms.uResolution.value.copy(resolution);
     const e = rot.elements;
     this.mesh.matrix.set(
       e[0], e[3], e[6], relCam.x,

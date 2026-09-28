@@ -50,9 +50,11 @@ export class TerrainModel {
     this.special = s.kind === 'gas' ? (GAS_SPECIAL[s.special] || 0) : (ROCK_SPECIAL[s.special] || 0);
     this.amp = s.amp || 0;
     this.hurst = s.hurst ?? 0.85;
-    this.lamTop = s.lamTop || (s.special === 'earth' ? 60e3 : s.special === 'moon' ? 300e3 : this.R * 0.3);
+    this.lamTop = s.lamTop || (s.special === 'earth' ? 60e3 : Math.min(this.R * 0.3, 250e3));
     this.ridge = s.ridge || 0;
     this.lumpy = s.lumpy || 0;
+    // small-scale roughness: regolith on airless bodies, scree/soil elsewhere
+    this.micro = s.micro ?? (s.kind !== 'rock' ? 0 : body.atmosphere || s.special === 'earth' ? 0.012 : 0.03);
     const g = (body.GM * 1e9) / (body.radius * KM) ** 2;
     const crater = s.crater || 0;
     this.craterStrength = Math.min(crater, 1.3);
@@ -85,20 +87,44 @@ export class TerrainModel {
     this.features = this.features.slice(0, MAX_FEATURES);
     this.samplers = {};
 
-    // conservative relief bound (m) for culling and skirts
-    let relief = 0;
-    let lam = this.lambda0;
-    for (let k = 0; k < 40; k++) { relief += this._octaveAmp(lam) * 1.9 * 1.2; lam *= 0.5; }
-    if (crater > 0) relief += 0.12 * (s.craterStart || this.R * 0.2) * this.craterStrength;
-    for (const f of this.features) relief += Math.abs(f.B.y);
-    if (this.special === 1) relief += 6500;
-    if (this.special === 2) relief += 1500;
+    // relief bound (m) for horizon culling: statistical for the fractal, largest crater,
+    // largest landmark (they rarely overlap) and the data-driven base relief
+    let lam = this.lambda0, sum2 = 0;
+    for (let k = 0; k < 40; k++) { sum2 += (this._octaveAmp(lam) * 1.3) ** 2; lam *= 0.5; }
+    let relief = 2.5 * Math.sqrt(sum2);
+    if (crater > 0) {
+      const rm = 0.18 * Math.min(s.craterStart || this.R * 0.2, this.lambda0);
+      relief += 1.5 * rm * 0.42 * Math.min(1, Math.pow(this.craterRc / rm, 0.55)) * this.craterStrength;
+    }
+    const fm = this.features.map((f) => Math.abs(f.B.y));
+    if (fm.length) relief += Math.max(...fm) * 1.1 + 0.1 * fm.reduce((x, y) => x + y, 0);
+    if (this.special === 1) relief += 11500;
+    if (this.special === 2) relief += 1400;
+    // relief of the detail that fits inside a node of a given edge length (for per-node bounds)
+    this.reliefBelow = (edge) => {
+      let l = this.lambda0, s2 = 0, cr = 0;
+      for (let k = 0; k < 44; k++) {
+        if (l <= 2 * edge) {
+          s2 += (this._octaveAmp(l) * 1.3) ** 2;
+          if (k >= this.craterK0 && this.craterStrength > 0) {
+            const rm = 0.18 * l;
+            cr = Math.max(cr, 1.5 * rm * 0.42 * Math.min(1, Math.pow(this.craterRc / rm, 0.55)) * this.craterStrength);
+          }
+        }
+        l *= 0.5;
+      }
+      let r = 2.5 * Math.sqrt(s2) + 2 * cr;
+      if (fm.length) r += Math.min(Math.max(...fm) * 1.1, edge * 0.5);
+      if (this.special === 1) r += Math.min(9000, edge * 0.35);
+      if (this.special === 2) r += Math.min(1400, edge * 0.2);
+      return r;
+    };
     this.maxRelief = s.kind === 'rock' ? relief : 0;
   }
 
   _octaveAmp(lam, lamTop = this.lamTop) {
     const a = (this.amp * Math.pow(lam / 1e4, this.hurst)) / (1 + Math.pow(lam / lamTop, this.hurst + 1));
-    return Math.max(a, this.lumpy * lam * 0.35);
+    return Math.max(Math.max(a, this.lumpy * lam * 0.35), (this.micro * lam) / (1 + (lam * lam) / 40000));
   }
 
   _featureHeight(x, y, z) {
@@ -184,8 +210,8 @@ export class TerrainModel {
     const r = hash3(cx, cy, cz);
     if (r[0] > this.craterDensity) return;
     const r2 = hash3(cx + 101, cy + 101, cz + 101);
-    const rad = 0.045 + 0.085 * r[1] * r[1];
-    const qx = x - (cx + 0.25 + 0.5 * r2[0]), qy = y - (cy + 0.25 + 0.5 * r2[1]), qz = z - (cz + 0.25 + 0.5 * r2[2]);
+    const rad = 0.05 + 0.13 * r[1] * r[1];
+    const qx = x - (cx + 0.35 + 0.3 * r2[0]), qy = y - (cy + 0.35 + 0.3 * r2[1]), qz = z - (cz + 0.35 + 0.3 * r2[2]);
     const t = Math.hypot(qx, qy, qz) / rad;
     if (t > 1.9) return;
     const rm = rad * lam;
@@ -230,6 +256,7 @@ export class TerrainModel {
       if (k >= this.craterK0 && this.craterStrength > 0) {
         const before = acc.h;
         this._crater(nx + 31, ny + 57, nz + 11, lam, acc);
+        this._crater(nx + 113.5, ny + 7.5, nz + 71.5, lam, acc);
         acc.h = before + (acc.h - before) * w;
       }
       lam *= 0.5;

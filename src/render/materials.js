@@ -105,6 +105,7 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uLamTop: { value: model.lamTop },
     uRidge: { value: model.ridge },
     uLumpy: { value: model.lumpy },
+    uMicro: { value: model.micro || 0 },
     uCraterStrength: { value: model.craterStrength },
     uCraterDensity: { value: model.craterDensity },
     uCraterRc: { value: model.craterRc },

@@ -26,7 +26,7 @@ uniform int uSpecial;
 uniform float uTime;
 
 // terrain
-uniform float uAmp, uHurst, uLamTop, uRidge, uLumpy;
+uniform float uAmp, uHurst, uLamTop, uRidge, uLumpy, uMicro;
 uniform float uCraterStrength, uCraterDensity, uCraterRc;
 uniform int uCraterK0;
 uniform vec4 uFeatA[MAX_FEAT];
@@ -53,7 +53,8 @@ float gNeed = 1.0;
 
 float octaveAmp(float lam) {
   float a = uAmp * pow(lam / 1.0e4, uHurst) / (1.0 + pow(lam / gLamTop, uHurst + 1.0));
-  return max(a, uLumpy * lam * 0.35);
+  // self-similar micro-roughness (regolith, scree): constant RMS slope at small scales
+  return max(max(a, uLumpy * lam * 0.35), uMicro * lam / (1.0 + lam * lam / 40000.0));
 }
 
 // Self-similar craters: at most one crater per lattice cell per octave.
@@ -62,8 +63,8 @@ void crater(vec3 x, float lam, float w, inout float h, inout vec3 g, inout float
   vec3 r = hash3(c);
   if (r.x > uCraterDensity) return;
   vec3 r2 = hash3(c + 101.0);
-  vec3 center = c + 0.25 + 0.5 * r2;
-  float rad = 0.045 + 0.085 * r.y * r.y;
+  vec3 center = c + 0.35 + 0.3 * r2;
+  float rad = 0.05 + 0.13 * r.y * r.y;
   vec3 q = x - center;
   float d = length(q);
   float t = d / rad;
@@ -102,7 +103,10 @@ void terrainOctave(int k, vec3 x, float lam, float w, float modAmp, inout float 
   h += w * A * val;
   g += w * A * grd / lam;
   alb += w * 0.06 * n.x;
-  if (k >= uCraterK0 && uCraterStrength > 0.0) crater(x + vec3(31.0, 57.0, 11.0), lam, w, h, g, alb);
+  if (k >= uCraterK0 && uCraterStrength > 0.0) {
+    crater(x + vec3(31.0, 57.0, 11.0), lam, w, h, g, alb);
+    crater(x + vec3(113.5, 7.5, 71.5), lam, w, h, g, alb); // second, offset lattice
+  }
 }
 
 // Large-scale, deterministic relief (textures and named landmarks). dir: unit vector, body frame.
