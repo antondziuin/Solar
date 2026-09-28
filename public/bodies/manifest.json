@@ -7,13 +7,24 @@
    "height": 180,
    "source": "Stooke small-body shape model (NASA PDS), via Celestia",
    "shape": true,
-   "scale": 3
+   "scale": 2.14
   },
   "map": {
    "file": "bodies/amalthea_map.jpg",
    "width": 1024,
    "height": 512,
    "source": "Celestia (ItzImcool, CC-BY-4.0), reprojected Galileo imagery"
+  }
+ },
+ "apophis": {
+  "dem": {
+   "file": "bodies/apophis_dem.png",
+   "radius": 159.34768476069493,
+   "width": 360,
+   "height": 180,
+   "source": "Lawrence & Benner 2026, Radar shape model of (99942) Apophis V1.0 (NASA PDS, CC0), after Brozovic et al. 2018",
+   "shape": true,
+   "scale": 0.00206
   }
  },
  "ariel": {
@@ -54,7 +65,8 @@
    "width": 360,
    "height": 180,
    "source": "Ernst et al. 2023 (CC-BY-4.0), via Celestia",
-   "shape": true
+   "shape": true,
+   "scale": 0.0904
   }
  },
  "dione": {
@@ -104,7 +116,7 @@
    "height": 180,
    "source": "Thomas et al., Saturn Small Moon Shape Models V1.0 (NASA PDS), via Celestia",
    "shape": true,
-   "scale": 2
+   "scale": 1.51
   }
  },
  "iapetus": {
@@ -239,7 +251,7 @@
    "height": 180,
    "source": "Stooke small-body shape model (NASA PDS), via Celestia",
    "shape": true,
-   "scale": 2
+   "scale": 1.27
   }
  },
  "rhea": {

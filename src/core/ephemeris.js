@@ -67,7 +67,7 @@ function keplerState(el, parent, planeFrame, tDays, outPos, outVel) {
     node += -1.5 * k * Math.cos(inc) * tDays * DAY;
     peri += 0.75 * k * (5 * Math.cos(inc) ** 2 - 1) * tDays * DAY;
   }
-  const M = el.M * DEG + n * tDays * DAY;
+  const M = el.M * DEG + n * (tDays - (el.epoch || 0)) * DAY; // epoch: days since J2000 (default J2000)
   const E = solveKepler(M, e);
   const cosE_ = Math.cos(E), sinE_ = Math.sin(E);
   const b = a * Math.sqrt(1 - e * e);
@@ -85,6 +85,96 @@ function keplerState(el, parent, planeFrame, tDays, outPos, outVel) {
   const m = planeFrame.elements;
   outPos.set(m[0] * lx + m[3] * ly + m[6] * lz, m[1] * lx + m[4] * ly + m[7] * lz, m[2] * lx + m[5] * ly + m[8] * lz);
   if (outVel) outVel.set(m[0] * lvx + m[3] * lvy + m[6] * lvz, m[1] * lvx + m[4] * lvy + m[7] * lvz, m[2] * lvx + m[5] * lvy + m[8] * lvz);
+}
+
+/** Ecliptic J2000 (x, y, z) -> world Vector3 (same units). */
+function eclToWorld(x, y, z, out) {
+  return out.set(x, z, -y);
+}
+
+// Plane frame of heliocentric elements referred to the J2000 ecliptic (pole RA 270, Dec 90 - obliquity).
+const ECLIPTIC_PLANE = { ra: 270, dec: 90 - OBLIQUITY_J2000 / DEG };
+let ECL_FRAME = null;
+/** Heliocentric state from osculating ecliptic elements (a in km, epoch in days since J2000 TT). */
+function eclipticKepler(el, sun, tDays, outPos, outVel) {
+  if (!ECL_FRAME) ECL_FRAME = iauFrame(ECLIPTIC_PLANE.ra, ECLIPTIC_PLANE.dec, 0);
+  keplerState(el, sun, ECL_FRAME, tDays, outPos, outVel);
+}
+
+/**
+ * Sampled heliocentric trajectory (see scripts/build_apophis.py): times (days since J2000 TT),
+ * ecliptic J2000 positions (km) and velocities (km/s); cubic Hermite interpolation.
+ */
+export class TrajectoryTable {
+  constructor(buf) {
+    const dv = new DataView(buf);
+    const n = dv.getUint32(4, true);
+    this.n = n;
+    this.t = new Float64Array(buf, 8, n);
+    this.p = new Float64Array(buf, 8 + 8 * n, 3 * n);
+    this.v = new Float32Array(buf, 8 + 32 * n, 3 * n);
+    this.t0 = this.t[0];
+    this.t1 = this.t[n - 1];
+    this._i = 0;
+  }
+
+  /** Position (m) and velocity (m/s) in world coordinates; false outside the table. */
+  state(tDays, outPos, outVel) {
+    const { t, p, v } = this;
+    if (tDays < this.t0 || tDays > this.t1) return false;
+    let i = this._i;
+    if (!(t[i] <= tDays && tDays <= t[i + 1])) {
+      let lo = 0, hi = this.n - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (t[m] <= tDays) lo = m; else hi = m; }
+      i = this._i = lo;
+    }
+    const h = (t[i + 1] - t[i]) * DAY;
+    const u = h > 0 ? ((tDays - t[i]) * DAY) / h : 0;
+    const u2 = u * u, u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+    const d00 = (6 * u2 - 6 * u) / h, d10 = 3 * u2 - 4 * u + 1, d01 = (-6 * u2 + 6 * u) / h, d11 = 3 * u2 - 2 * u;
+    const a = 3 * i, b = 3 * i + 3;
+    const P = [0, 0, 0], V = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      P[k] = (h00 * p[a + k] + h10 * h * v[a + k] + h01 * p[b + k] + h11 * h * v[b + k]) * KM;
+      V[k] = (d00 * p[a + k] + d10 * v[a + k] + d01 * p[b + k] + d11 * v[b + k]) * KM;
+    }
+    eclToWorld(P[0], P[1], P[2], outPos);
+    if (outVel) eclToWorld(V[0], V[1], V[2], outVel);
+    return true;
+  }
+}
+
+/**
+ * Tumbling (non-principal-axis) rotation in Celestia's PrecessingRotation form: the body spins
+ * about its z axis (period `period` h), which is tilted by `inclination` from the angular momentum
+ * vector and precesses about it (period `precession` h, negative = retrograde). `frame` gives the
+ * inertial frame (x axis and angular momentum = z) in ecliptic J2000 coordinates.
+ * body -> frame: Rz(node) Rx(inclination) Rz(spin).
+ */
+function precessingFrame(r, tDays, out) {
+  const dt = tDays - r.epoch; // days
+  const rot = dt / (r.period / 24);
+  const spin = (rot - Math.floor(rot) + 0.5) * 2 * Math.PI + r.meridian * DEG;
+  const node = r.node * DEG - (dt * 2 * Math.PI) / (r.precession / 24);
+  const inc = r.inclination * DEG;
+  const cs = Math.cos(spin), ss = Math.sin(spin), cn = Math.cos(node), sn = Math.sin(node), ci = Math.cos(inc), si = Math.sin(inc);
+  // columns of Rz(node) Rx(inc) Rz(spin): images of the body axes in the frame
+  const bx = [cn * cs - sn * ci * ss, sn * cs + cn * ci * ss, si * ss];
+  const by = [-cn * ss - sn * ci * cs, -sn * ss + cn * ci * cs, si * cs];
+  const bz = [sn * si, -cn * si, ci];
+  if (!r._F) {
+    // frame axes (ecliptic): x = primary, z = secondary orthogonalised, y = z x x
+    const fx = new Vector3(...r.frameX).normalize();
+    const fz = new Vector3(...r.frameZ);
+    fz.addScaledVector(fx, -fz.dot(fx)).normalize();
+    const fy = new Vector3().crossVectors(fz, fx);
+    r._F = [fx, fy, fz].map((f) => eclToWorld(f.x, f.y, f.z, new Vector3()));
+  }
+  const [X, Y, Z] = r._F;
+  const col = (c) => new Vector3().addScaledVector(X, c[0]).addScaledVector(Y, c[1]).addScaledVector(Z, c[2]);
+  const x = col(bx), y = col(by), z = col(bz);
+  return out.set(x.x, y.x, z.x, x.y, y.y, z.y, x.z, y.z, z.z);
 }
 
 const JUP_MOONS = ['io', 'europa', 'ganymede', 'callisto'];
@@ -113,6 +203,24 @@ export class Ephemeris {
     bodies.forEach(visit);
     this._tmp = new Vector3();
     this._tmp2 = new Vector3();
+  }
+
+  /** Load sampled trajectories (bodies with ephem.kind === 'table'); Kepler elements are used until then. */
+  async loadTables(base) {
+    await Promise.all(this.bodies.filter((b) => b.ephem.kind === 'table').map(async (b) => {
+      const meta = await fetch(base + b.ephem.file).then((r) => r.json());
+      const buf = await fetch(base + meta.file).then((r) => r.arrayBuffer());
+      const table = new TrajectoryTable(buf);
+      b.ephem.table = table;
+      b.ephem.meta = meta;
+      // beyond the table: osculating elements at its ends (continuous at the boundaries)
+      const sun = this.byId[b.parent];
+      const p = new Vector3(), v = new Vector3();
+      for (const [key, t] of [['before', table.t0], ['after', table.t1]]) {
+        table.state(t, p, v);
+        b.ephem[key] = elementsFromState(p, v, (sun.GM + (b.GM || 0)) * 1e9, t);
+      }
+    }));
   }
 
   /** Reference plane frame (columns: node direction, in-plane perpendicular, pole) for a satellite. */
@@ -164,6 +272,13 @@ export class Ephemeris {
         const pf = this._planeFrame(b, parent, time);
         keplerState({ ...ep, GMsat: b.GM }, parent, pf, tDays, s.rel, s.vel);
         s.pos.copy(parent.state.pos).add(s.rel);
+      } else if (ep.kind === 'table') {
+        if (!ep.table || !ep.table.state(tDays, s.rel, s.vel)) {
+          // outside the integrated span (or before it is loaded): osculating elements
+          const el = tDays < (ep.table ? ep.table.t0 : ep.split) ? ep.before : ep.after;
+          eclipticKepler(el, parent, tDays, s.rel, s.vel);
+        }
+        s.pos.copy(s.rel);
       }
       // ---- non-IAU orientation
       if (b.rotation.kind === 'locked') {
@@ -173,6 +288,9 @@ export class Ephemeris {
         const y = new Vector3().crossVectors(z, x).normalize();
         const zz = new Vector3().crossVectors(x, y);
         s.rot.set(x.x, y.x, zz.x, x.y, y.y, zz.y, x.z, y.z, zz.z);
+      } else if (b.rotation.kind === 'precessing') {
+        precessingFrame(b.rotation, tDays, s.rot);
+        s.inertialPole = b.rotation._F[2]; // angular momentum: the camera's non-rotating reference
       } else if (b.rotation.kind === 'chaotic' || b.rotation.kind === 'spin') {
         const W = (tDays / b.rotation.period) * 360;
         const tilt = b.rotation.kind === 'chaotic' ? 40 + 20 * Math.sin(tDays / 37) : 10;
@@ -210,6 +328,21 @@ export class Ephemeris {
       }
       return pts;
     }
+    if (ep.kind === 'table') {
+      // the trajectory itself over one osculating period centred on now (shows the 2029 kink)
+      const period = orbitalPeriodDays(b, parent);
+      const t0 = Astronomy.MakeTime(ut).tt;
+      const s = { pos: new Vector3(), vel: new Vector3() };
+      for (let k = 0; k < n; k++) {
+        const t = t0 - period / 2 + (period * k) / n;
+        if (!ep.table || !ep.table.state(t, s.pos, null)) {
+          const el = t < (ep.table ? ep.table.t0 : ep.split) ? ep.before : ep.after;
+          eclipticKepler(el, parent, t, s.pos, null);
+        }
+        pts.push(s.pos.clone());
+      }
+      return pts;
+    }
     // Numerically sample with the full ephemeris (planets, Moon, Galilean moons).
     const period = orbitalPeriodDays(b, parent);
     const time0 = Astronomy.MakeTime(ut);
@@ -237,6 +370,54 @@ export class Ephemeris {
 export function orbitalPeriodDays(b, parent) {
   const known = { mercury: 87.969, venus: 224.701, earth: 365.256, mars: 686.98, jupiter: 4332.59, saturn: 10759.22, uranus: 30688.5, neptune: 60182, pluto: 90560, moon: 27.3217, io: 1.769138, europa: 3.551181, ganymede: 7.154553, callisto: 16.689018 };
   if (known[b.id]) return known[b.id];
+  if (b.ephem.kind === 'table') return osculatingElements(b, parent).period;
   const a = b.ephem.a * KM;
   return 2 * Math.PI * Math.sqrt((a * a * a) / ((parent.GM + b.GM) * 1e9)) / DAY;
+}
+
+/**
+ * Osculating heliocentric (or parent-centric) elements from the current state, referred to the
+ * J2000 ecliptic: a (m), e, i, node, peri (deg), q, Q (m), period (days).
+ */
+export function osculatingElements(b, parent) {
+  const GM = (parent.GM + (b.GM || 0)) * 1e9;
+  const s = b.state;
+  // world -> ecliptic (x, -z, y)
+  const r = new Vector3(s.rel.x, -s.rel.z, s.rel.y);
+  const v = new Vector3(s.vel.x, -s.vel.z, s.vel.y);
+  if (b.ephem.kind === 'table' && parent.id === 'sun') {
+    r.set(s.pos.x, -s.pos.z, s.pos.y);
+  }
+  const rl = r.length(), v2 = v.lengthSq();
+  const a = 1 / (2 / rl - v2 / GM);
+  const h = new Vector3().crossVectors(r, v);
+  const ev = new Vector3().crossVectors(v, h).divideScalar(GM).addScaledVector(r, -1 / rl);
+  const e = ev.length();
+  const i = Math.acos(h.z / h.length()) / DEG;
+  const nv = new Vector3(-h.y, h.x, 0);
+  let node = Math.atan2(nv.y, nv.x) / DEG;
+  if (node < 0) node += 360;
+  let peri = Math.acos(Math.max(-1, Math.min(1, nv.dot(ev) / (nv.length() * e)))) / DEG;
+  if (ev.z < 0) peri = 360 - peri;
+  const period = a > 0 ? (2 * Math.PI * Math.sqrt(a ** 3 / GM)) / DAY : Infinity;
+  return { a, e, i, node, peri, q: a * (1 - e), Q: a * (1 + e), period };
+}
+
+/** Kepler elements (ecliptic J2000; a in km, angles in degrees, epoch in days) from a world state. */
+function elementsFromState(pos, vel, GM, epoch) {
+  const r = new Vector3(pos.x, -pos.z, pos.y), v = new Vector3(vel.x, -vel.z, vel.y);
+  const rl = r.length();
+  const a = 1 / (2 / rl - v.lengthSq() / GM);
+  const h = new Vector3().crossVectors(r, v);
+  const ev = new Vector3().crossVectors(v, h).divideScalar(GM).addScaledVector(r, -1 / rl);
+  const e = ev.length();
+  const i = Math.acos(h.z / h.length());
+  const node = Math.atan2(h.x, -h.y);
+  const nv = new Vector3(Math.cos(node), Math.sin(node), 0);
+  const q = new Vector3().crossVectors(h, nv).normalize(); // in-plane, 90 deg from the node
+  const peri = Math.atan2(ev.dot(q), ev.dot(nv));
+  const nu = Math.atan2(r.dot(new Vector3().crossVectors(h, ev).normalize()), r.dot(ev) / e);
+  const E = 2 * Math.atan(Math.sqrt((1 - e) / (1 + e)) * Math.tan(nu / 2));
+  const M = E - e * Math.sin(E);
+  return { epoch, a: a / KM, e, i: i / DEG, node: node / DEG, peri: peri / DEG, M: M / DEG };
 }

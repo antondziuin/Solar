@@ -24,7 +24,7 @@ void main() {
   gl_FragColor = vec4(uColor * uOpacity * vFade, 1.0);
 }`;
 
-const COLORS = { planet: 0x4f7bd8, dwarf: 0x9a7bd8, moon: 0x5aa0a8 };
+const COLORS = { planet: 0x4f7bd8, dwarf: 0x9a7bd8, moon: 0x5aa0a8, asteroid: 0xc9a060 };
 
 export class Orbits {
   constructor(scene, ephem) {

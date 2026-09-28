@@ -37,6 +37,10 @@ MODELS = {
     "proteus": ("models/proteus.cmod", 218.0, "Stooke small-body shape model (NASA PDS), via Celestia"),
     "hyperion": ("models/hyperion.cmod", 180.1, "Thomas et al., Saturn Small Moon Shape Models V1.0 (NASA PDS), via Celestia"),
     "deimos": ("models/deimos.cmod", 7.8, "Ernst et al. 2023 (CC-BY-4.0), via Celestia"),
+    # a = None: the model is in km already. Apophis tumbles about its short axis (model y), which
+    # becomes the body z axis; its rotation model is in src/core/ephemeris.js (Lee et al. 2022).
+    "apophis": ("extras-standard/99942_apophis/models/apophis.cmod", None,
+                "Lawrence & Benner 2026, Radar shape model of (99942) Apophis V1.0 (NASA PDS, CC0), after Brozovic et al. 2018"),
 }
 
 
@@ -173,6 +177,11 @@ def radius_map(tris, W, H, uvs=None):
             break
         nb = np.maximum(np.roll(r2, 1, 1), np.roll(r2, -1, 1))
         r2[m] = nb[m]
+    for j in list(range(H // 2, H)) + list(range(H // 2, -1, -1)):  # still empty (poles): the row towards the equator
+        m = r2[j] == 0
+        if m.any():
+            src = r2[j - 1] if j > H // 2 else r2[min(j + 1, H - 1)]
+            r2[j][m] = src[m] if (src[m] > 0).all() else r2[j][~m].mean() if (~m).any() else src.mean()
     if uvs is None:
         return r2
     ok = best >= 0
@@ -191,14 +200,20 @@ def main():
         # Celestia model frame is y-up: north pole +y, longitude 0 at -x, 90 deg E at +z
         # (Body::planetocentricToCartesian) -> body frame (-x, z, y) with z north, x at lon 0.
         # The model origin is the centre of mass of the shape model; keep it.
-        tris = np.stack([-tris[..., 0], tris[..., 2], tris[..., 1]], -1)
-        pts = tris.reshape(-1, 3)
-        tris = tris * (2 * a_km * 1000 / np.ptp(pts, 0).max())  # longest axis = 2a (IAU)
+        if a_km is None:
+            # tumbling asteroid: body frame (x, -z, y), rotating about the volume centroid
+            tris = np.stack([tris[..., 0], -tris[..., 2], tris[..., 1]], -1) * 1000
+            w6 = np.einsum("ij,ij->i", tris[:, 0], np.cross(tris[:, 1], tris[:, 2]))
+            tris = tris - (w6[:, None] * tris.sum(1)).sum(0) / 4 / w6.sum()
+        else:
+            tris = np.stack([-tris[..., 0], tris[..., 2], tris[..., 1]], -1)
+            pts = tris.reshape(-1, 3)
+            tris = tris * (2 * a_km * 1000 / np.ptp(pts, 0).max())  # longest axis = 2a (IAU)
         W, H = 360, 180
         r = radius_map(tris, W, H)
         R = float(np.median(r))
         h = r - R
-        scale = max(1, int(np.ceil(np.abs(h).max() / 32000)))  # metres per DEM unit
+        scale = float(f"{np.abs(h).max() / 32000:.3g}")  # metres per DEM unit
         v = np.clip(np.round(h / scale) + 32768, 0, 65535).astype(np.uint32)
         rgb = np.stack([(v >> 8) & 255, v & 255, np.full_like(v, 255)], -1).astype(np.uint8)
         path = os.path.join(OUT, f"{bid}_dem.png")
@@ -207,8 +222,7 @@ def main():
         print(f"{bid}: {len(tris)} triangles, size {np.ptp(p2, 0).round(1)} km, R={R / 1000:.1f} km, "
               f"h {h.min():.0f}..{h.max():.0f} m, scale {scale}")
         part = {"file": f"bodies/{bid}_dem.png", "radius": R, "width": W, "height": H, "source": src, "shape": True}
-        if scale != 1:
-            part["scale"] = scale
+        part["scale"] = scale
         json.dump(part, open(os.path.join(OUT, f"{bid}_dem.part.json"), "w"), indent=1)
         if bid in TEXTURES:
             trel, tsrc = TEXTURES[bid]

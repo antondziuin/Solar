@@ -4,5 +4,6 @@
  "width": 360,
  "height": 180,
  "source": "Ernst et al. 2023 (CC-BY-4.0), via Celestia",
- "shape": true
+ "shape": true,
+ "scale": 0.0904
 }

@@ -61,6 +61,8 @@ export class TerrainModel {
     this.craterDensity = clamp(0.3 + 0.3 * crater, 0, 0.75);
     this.craterRc = 9000 * (1.62 / g);
     this.craterK0 = crater > 0 ? Math.max(0, Math.ceil(Math.log2(this.lambda0 / (s.craterStart || this.R * 0.2)))) : 99;
+    this.boulders = s.boulders || 0;
+    this.boulderK0 = this.boulders > 0 ? Math.max(0, Math.ceil(Math.log2(this.lambda0 / (s.boulderStart || this.R * 0.2)))) : 99;
     const seed = s.seed || 0;
     this.seedVec = [(seed * 37.13) % 289, (seed * 71.97) % 289, (seed * 13.37) % 289];
     this.noiseStretch = s.kind === 'gas' ? [1, 1, 4] : [1, 1, 1];
@@ -97,6 +99,9 @@ export class TerrainModel {
       const rm = 0.18 * Math.min(s.craterStart || this.R * 0.2, this.lambda0);
       relief += 1.5 * rm * 0.42 * Math.min(1, Math.pow(this.craterRc / rm, 0.55)) * this.craterStrength;
     }
+    // boulders: tallest ~0.21 of the top boulder octave's wavelength
+    const boulderTop = this.boulders > 0 ? 0.21 * this.lambda0 / 2 ** this.boulderK0 : 0;
+    relief += boulderTop;
     const fm = this.features.map((f) => Math.abs(f.B.y));
     if (fm.length) relief += Math.max(...fm) * 1.1 + 0.1 * fm.reduce((x, y) => x + y, 0);
     if (this.special === 1) relief += 11500;
@@ -114,7 +119,7 @@ export class TerrainModel {
         }
         l *= 0.5;
       }
-      let r = 2.5 * Math.sqrt(s2) + 2 * cr;
+      let r = 2.5 * Math.sqrt(s2) + 2 * cr + Math.min(boulderTop, 0.42 * edge);
       if (fm.length) r += Math.min(Math.max(...fm) * 1.1, edge * 0.5);
       if (this.special === 1) r += Math.min(9000, edge * 0.35);
       if (this.special === 2) r += Math.min(1400, edge * 0.2);
@@ -237,6 +242,24 @@ export class TerrainModel {
     acc.h += depth * (bowl + rim + pk) * win;
   }
 
+  _boulder(x, y, z, lam, acc) {
+    const cx = Math.floor(x), cy = Math.floor(y), cz = Math.floor(z);
+    const r = hash3(cx + 211, cy + 211, cz + 211);
+    if (r[0] > this.boulders) return;
+    const r2 = hash3(cx + 307, cy + 307, cz + 307);
+    const r3 = hash3(cx + 401, cy + 401, cz + 401);
+    const qx = x - (cx + 0.3 + 0.4 * r2[0]), qy = y - (cy + 0.3 + 0.4 * r2[1]), qz = z - (cz + 0.3 + 0.4 * r2[2]);
+    const d = Math.hypot(qx, qy, qz) || 1e-7;
+    const rad0 = 0.06 + 0.2 * r[1] * r[1];
+    if (d > rad0 * 1.8) return;
+    const ux = qx / d, uy = qy / d, uz = qz / d;
+    const rad = rad0 * (1 + 0.45 * (ux * (r3[0] - 0.5) + uy * (r3[1] - 0.5) + uz * (r3[2] - 0.5))
+      + 0.3 * gnoise(ux * 1.9 + r2[0] * 40, uy * 1.9 + r2[1] * 40, uz * 1.9 + r2[2] * 40));
+    const t = d / rad;
+    if (t >= 1) return;
+    acc.h += rad * lam * (0.4 + 0.35 * r[2]) * Math.sqrt(1 - Math.pow(t, 2.5));
+  }
+
   /**
    * Terrain height (m) above the reference ellipsoid at unit direction (x,y,z), including
    * octaves down to `minLam` metres. For Earth this is the raw elevation (negative = sea floor).
@@ -265,6 +288,12 @@ export class TerrainModel {
         const before = acc.h;
         this._crater(nx + 31, ny + 57, nz + 11, lam, acc);
         this._crater(nx + 113.5, ny + 7.5, nz + 71.5, lam, acc);
+        acc.h = before + (acc.h - before) * w;
+      }
+      if (this.boulders > 0 && k >= this.boulderK0) {
+        const before = acc.h;
+        this._boulder(nx + 71, ny + 13, nz + 5, lam, acc);
+        this._boulder(nx + 17.5, ny + 93.5, nz + 41.5, lam, acc);
         acc.h = before + (acc.h - before) * w;
       }
       lam *= 0.5;

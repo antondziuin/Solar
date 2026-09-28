@@ -1,0 +1,9 @@
+{
+ "file": "bodies/apophis_dem.png",
+ "radius": 159.34768476069493,
+ "width": 360,
+ "height": 180,
+ "source": "Lawrence & Benner 2026, Radar shape model of (99942) Apophis V1.0 (NASA PDS, CC0), after Brozovic et al. 2018",
+ "shape": true,
+ "scale": 0.00206
+}
