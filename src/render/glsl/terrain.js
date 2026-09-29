@@ -373,8 +373,13 @@ out vec3 vGrad;
 out float vAlb;
 out float vLowOct;
 out float vDataRes;
+out vec3 vWorld;
 
+#ifdef SHADOW_DEPTH
+uniform mat4 uLightVP;       // camera-relative world -> light clip space (terrain shadow pass)
+#else
 #include <logdepthbuf_pars_vertex>
+#endif
 
 void main() {
   vec3 dir, ddir;
@@ -436,9 +441,19 @@ void main() {
   vAlb = alb;
   vLowOct = lowOct;
   vec3 world = uRot * rel;
+  vWorld = world;
+#ifdef SHADOW_DEPTH
+  gl_Position = uLightVP * vec4(world, 1.0);
+#else
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
   #include <logdepthbuf_vertex>
+#endif
 }
+`;
+
+// depth-only fragment stage of the terrain shadow pass (plain, linear orthographic depth)
+export const SHADOW_FRAG = /* glsl */ `
+void main() { gl_FragColor = vec4(1.0); }
 `;
 
 export const TERRAIN_FRAG = /* glsl */ `
@@ -475,6 +490,79 @@ in vec3 vGrad;
 in float vAlb;
 in float vLowOct;
 in float vDataRes;
+in vec3 vWorld;
+
+// ---- cast shadows of the relief: cascaded orthographic depth maps rendered from the Sun
+// (atlas of 3 square cascades side by side), percentage-closer soft shadows whose penumbra
+// follows the Sun's angular size and the distance to the occluder
+uniform mat3 uRot;
+uniform highp sampler2D uShadowTex;
+uniform mat4 uShadowVP[3];
+uniform vec4 uShadowInfo[3];  // texel size (m), depth range (m), -, active
+uniform float uShadowOn;
+uniform float uShadowSize;    // texels per cascade side
+uniform float uSunAngR;       // angular radius of the Sun seen from the body (rad)
+
+const vec2 POISSON[16] = vec2[16](
+  vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725), vec2(-0.09418410, -0.92938870), vec2(0.34495938, 0.29387760),
+  vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464), vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+  vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420), vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+  vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590), vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790));
+
+float terrainShadow(vec3 wp, vec3 nW, vec3 LW) {
+  if (uShadowOn < 0.5) return 1.0;
+  vec2 duv = vec2(1.0 / (3.0 * uShadowSize), 1.0 / uShadowSize);
+  float rot = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+  mat2 rm = mat2(cos(rot), sin(rot), -sin(rot), cos(rot));
+  for (int i = 0; i < 3; i++) {
+    vec4 info = uShadowInfo[i];
+    if (info.w < 0.5) continue;
+    float texel = info.x;
+    // A small normal offset only: under grazing light one texel across the light spans many
+    // texels of ground, so a larger lift would look the map up on terrain far towards the Sun.
+    // Acne is handled by the slope-scaled depth bias below.
+    float cosT = clamp(dot(nW, LW), 0.02, 1.0);
+    vec3 p0 = wp + nW * texel * 0.5 + LW * texel;
+    vec3 lp = (uShadowVP[i] * vec4(p0, 1.0)).xyz;
+    vec2 a = abs(lp.xy);
+    // outside the square, or beyond the depth slab (grazing light stretches the square along
+    // the ground far past the slab): the next, larger cascade takes over
+    if (max(a.x, a.y) > 0.97 || abs(lp.z) > 0.98) continue;
+    vec2 uv = lp.xy * 0.5 + 0.5;
+    uv.x = (uv.x + float(i)) / 3.0;
+    float zr = lp.z * 0.5 + 0.5;
+    // Penumbra from the solar disc: the nearest occluder (searched over a few texels only - under
+    // grazing light a wider search always finds terrain far towards the Sun) sets the kernel
+    // size, distance x angular radius. Near the shadow boundary, where the terrain barely
+    // touches the rays, this gives partial light instead of an arbitrary lit/unlit decision.
+    // Lookups r texels across the light land on ground r * tan(theta) texels nearer to the Sun,
+    // so the depth bias grows with tan(theta) and with the kernel radius.
+    float tanT = min(sqrt(1.0 - cosT * cosT) / cosT, 25.0);
+    float bias0 = (1.5 + 4.0 * tanT) * texel / info.y;
+    float dmin = 1e9;
+    for (int k = 0; k < 9; k++) {
+      vec2 o = k == 0 ? vec2(0.0) : rm * POISSON[k] * 3.0;
+      float d = texture(uShadowTex, uv + o * duv).r;
+      if (d < zr - bias0) dmin = min(dmin, (zr - d) * info.y);
+    }
+    float s = 1.0;
+    if (dmin < 1e8) {
+      float pen = clamp(dmin * uSunAngR / texel, 1.0, 12.0);
+      float bias = (1.5 + (1.0 + pen) * tanT) * texel / info.y;
+      float lit = 0.0;
+      for (int k = 0; k < 16; k++) {
+        float d = texture(uShadowTex, uv + rm * POISSON[k] * pen * duv).r;
+        lit += d < zr - bias ? 0.0 : 1.0;
+      }
+      s = lit / 16.0;
+    }
+    // fade out towards the rim of the outermost active cascade
+    float edge = smoothstep(0.97, 0.85, max(a.x, a.y));
+    bool last = i == 2 || uShadowInfo[min(i + 1, 2)].w < 0.5;
+    return last ? mix(1.0, s, edge) : s;
+  }
+  return 1.0;
+}
 
 #include <logdepthbuf_pars_fragment>
 
@@ -638,6 +726,61 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   return c;
 }
 
+// ---------------------------------------------------------------- small-scale cast shadows
+// The shadow maps only see the mesh (vertex-level relief, ~1/10 of the viewing distance). Below
+// that, crater rims, boulders and ridges exist only in the fragment octaves; march a short ray
+// towards the Sun through those octaves alone, over the vertex-level plane.
+float gBandH[MAX_OCT];   // per-octave height of the fragment band at the shaded point
+
+// height of the band octaves with wavelengths in [lamLo, lamHi] at another point
+float bandHeight(vec3 relSurf, float D, int k0, float baseMod, float modAmp, float lamLo, float lamHi, out float hP) {
+  float h = 0.0, a = 0.0;
+  vec3 g = vec3(0.0);
+  hP = 0.0;
+  float lam = uLambda0 * exp2(-float(k0));
+  for (int k = 0; k < MAX_OCT; k++) {
+    if (k < k0) continue;
+    float wv = clamp(log2(lam / (D * uVertexCut)), 0.0, 1.0);
+    float wf = clamp(log2(lam / (D * uPixelCut)), 0.0, 1.0);
+    if (wf <= 0.0 || lam < lamLo) break;
+    float w = wf - wv;
+    if (w > 0.0 && lam <= lamHi) {
+      terrainOctave(k, relSurf / lam + uCamOff[k], lam, w, k >= 3 ? modAmp : 0.6 * baseMod, h, g, a);
+      hP += gBandH[k];
+    }
+    lam *= 0.5;
+  }
+  return h;
+}
+
+float microShadow(vec3 relSurf, float D, vec3 nV, vec3 L, int k0, float baseMod, float modAmp) {
+  float sinE = dot(nV, L);
+  if (sinE <= 0.0 || sinE > 0.75) return 1.0;           // unlit, or Sun high: nothing to cast
+  vec3 th = L - nV * sinE;
+  float cosE = length(th);
+  th /= cosE;
+  float tanE = sinE / cosE;
+  float pix = D * uPixelCut;
+  float sMin = 4.0 * pix, sMax = 1.5 * D * uVertexCut;
+  if (sMax <= sMin) return 1.0;
+  float vis = 1.0;
+  float s = sMin;
+  float ratio = pow(sMax / sMin, 1.0 / 7.0);
+  for (int i = 0; i < 8; i++) {
+    // features much smaller than the step cannot shade over that distance (and would alias);
+    // much larger ones only tilt the ground, which the lighting already accounts for
+    float hp;
+    float hq = bandHeight(relSurf + th * s, D, k0, baseMod, modAmp, s * 0.5, s * 16.0, hp);
+    // clearance of the ray above the terrain, in units of the solar disc's size at that distance
+    // (at least a couple of pixels, so the edge stays antialiased)
+    float c = (hp + s * tanE - hq) / (s * max(uSunAngR, 0.002) * 2.0 + 2.0 * pix);
+    vis = min(vis, clamp(0.5 + 0.5 * c, 0.0, 1.0));
+    if (vis <= 0.0) break;
+    s *= ratio;
+  }
+  return vis * vis * (3.0 - 2.0 * vis);
+}
+
 // ---------------------------------------------------------------- gas giant colour
 vec3 gasColour(vec3 dir, vec3 nrmOut, float D, out vec3 grad) {
   float lat = asin(clamp(dir.z, -1.0, 1.0));
@@ -741,24 +884,31 @@ void main() {
   gH0 = vH0;
   vec3 Gr = vGrad;
   float alb = vAlb;
+  int bandK0 = 0;
+  float bandBase = 1.0, bandMod = 1.0;
 #if defined(MODE_ROCK)
   // shading-only octaves between the geometry cut-off and the pixel footprint
   {
     float kv = log2(uLambda0 / (2.0 * D * uVertexCut));
     int k0 = int(max(floor(kv), 0.0));
+    bandK0 = k0;
     float lam = uLambda0 * exp2(-float(k0));
     gLamTop = vDataRes; // tapering wavelength chosen per vertex (real data resolution)
     float baseMod = regionAmp(dir, 0.0);
     float modAmp = regionAmp(dir, vLowOct);
+    bandBase = baseMod; bandMod = modAmp;
     for (int k = 0; k < MAX_OCT; k++) {
       if (k < k0) continue;
       float wv = clamp(log2(lam / (D * uVertexCut)), 0.0, 1.0);
       float wf = clamp(log2(lam / (D * uPixelCut)), 0.0, 1.0);
       if (wf <= 0.0) break;
       float w = wf - wv;
+      gBandH[k] = 0.0;
       if (w > 0.0) {
         vec3 x = vRelSurf / lam + uCamOff[k];
+        float h0 = H;
         terrainOctave(k, x, lam, w, k >= 3 ? modAmp : 0.6 * baseMod, H, Gr, alb);
+        gBandH[k] = H - h0;
       }
       lam *= 0.5;
     }
@@ -844,6 +994,21 @@ void main() {
 
   // ---------------------------------------------------------------- lighting
   vec3 sunVis = sunVisibility(pKm);
+#if defined(MODE_ROCK)
+  if (uShadowOn > 0.5) {
+    // uShadowOn: 1 = both layers; 2 / 3 = shadow maps / small-scale only (debugging)
+    if (uShadowOn < 2.5) sunVis *= terrainShadow(vWorld, normalize(uRot * nS), normalize(uRot * L));
+    // vertex-level plane: the interpolated mesh gradient
+    vec3 Gv = vGrad - nS * dot(vGrad, nS);
+    vec3 nV = normalize(nS - Gv);
+    float micro = 1.0;
+#ifdef EARTH
+    if (!isOcean(dir, H))
+#endif
+    micro = microShadow(vRelSurf, D, nV, L, bandK0, bandBase, bandMod);
+    if (uShadowOn < 1.5 || uShadowOn > 2.5) sunVis *= micro;
+  }
+#endif
 #ifdef RINGSHADOW
   sunVis *= ringShadow(pKm, L);
 #endif

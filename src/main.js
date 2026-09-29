@@ -14,6 +14,7 @@ import { BodyView } from './render/BodyView.js';
 import { Sky } from './render/Sky.js';
 import { Orbits } from './render/Orbits.js';
 import { Markers } from './render/Markers.js';
+import { TerrainShadows } from './render/TerrainShadows.js';
 import { UI } from './ui/ui.js';
 import { EarthDEM } from './core/earthDem.js';
 
@@ -110,6 +111,7 @@ class App {
     setText('Loading 41 000 stars…');
     await this.sky.load(BASE);
     this.orbits = new Orbits(this.scene, this.ephem);
+    this.shadows = new TerrainShadows();
     this.markers = new Markers(this.scene, BODIES.length);
 
     // post-processing: sky pass, scene pass, bloom, tone mapping
@@ -334,9 +336,13 @@ class App {
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
       base: BASE, focusId: (this.controller.fly?.body || this.controller.focus)?.id,
       invViewProj: this._invViewProj, resolution: this._resolution,
+      shadows: this.shadows, alt, camForward: new THREE.Vector3(-me[8], -me[9], -me[10]),
       cameraFacing: (rel, r) => { sphere.center.copy(rel); sphere.radius = r; return frustum.intersectsSphere(sphere); },
     };
+    this.shadows.active = false;
     for (const v of this.viewList) v.update(ctx);
+    if (!this.shadows.active && this.shadows.view) this.shadows.view.material.uniforms.uShadowOn.value = 0;
+    this.shadows.render(this.renderer, ctx);
     this.markers.update(this.viewList, ctx);
     // orbit lines fade out when flying close to a surface
     const fR = this.controller.focus ? this.views[this.controller.focus.id].model.R : 1;

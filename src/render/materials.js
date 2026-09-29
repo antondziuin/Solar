@@ -155,6 +155,14 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uHasMap: { value: 0 },
     uMapGain: { value: 1 },
     uMapGray: { value: new THREE.Vector2(0, 0.5) },
+    // relief shadows (see TerrainShadows)
+    uShadowTex: { value: dummyFloatTex },
+    uShadowVP: { value: [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()] },
+    uShadowInfo: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+    uShadowOn: { value: 0 },
+    uShadowSize: { value: 1 },
+    uSunAngR: { value: 0.00465 },
+    uLightVP: { value: new THREE.Matrix4() },
   };
   const defines = {};
   if (mode === 'rock') defines.MODE_ROCK = '';

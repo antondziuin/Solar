@@ -192,7 +192,9 @@ export class BodyView {
     } else this.groundH = 0;
 
     this.model.camOffsets(this.camPF, MAX_OCTAVES, U.uCamOff.value);
-    this.lod.update(this.camPF, this.relCam, s.rot, ctx.frustum, this.groundH);
+    // relief shadows on the body the camera is at: keep off-screen casters near the camera too
+    const extra = ctx.shadows && ctx.focusId === b.id ? ctx.shadows.prepare(this, ctx, ctx.alt, ctx.camForward) : null;
+    this.lod.update(this.camPF, this.relCam, s.rot, ctx.frustum, this.groundH, extra);
     U.uRot.value.copy(s.rot);
     U.uCamPF.value.copy(this.camPF);
     U.uVertexCut.value = 4 / (this.lod.splitK * GRID_N);

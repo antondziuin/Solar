@@ -42,6 +42,11 @@ npm run build      # static site in dist/ (deployable anywhere, e.g. GitHub Page
   exposure keyed to the body you are looking at (adjustable in *Settings*).
 - Eclipses: every body receives soft penumbral shadows from its parent and sibling moons
   (solar eclipses on Earth, Io's shadow on Jupiter, red-tinted lunar eclipses).
+- Cast shadows of the relief on the body you are at, at every scale: three cascaded shadow
+  maps rendered from the Sun with the terrain's own vertex shader (mountains, crater walls,
+  large boulders - including casters off screen), plus a short ray march towards the Sun
+  through the finer fragment-level octaves (crater rims, small boulders). Penumbrae follow the
+  Sun's angular size and the distance to the occluder. *Settings → Relief shadows* toggles them.
 - Planetshine (earthshine on the Moon's night side).
 - Airless bodies use a Lommel–Seeliger/Lambert regolith BRDF with an opposition surge;
   gas giants use Minnaert limb darkening; the Sun has wavelength-dependent limb darkening.

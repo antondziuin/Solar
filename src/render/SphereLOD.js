@@ -86,6 +86,7 @@ export class SphereLOD {
     this.anchor = new Float32Array(maxInstances * 3);
     this.chunk = new Float32Array(maxInstances * 4);
     this.skirt = new Float32Array(maxInstances);
+    this.bound = new Float32Array(maxInstances); // bounding radius of each chunk (m), CPU only
     this.aAnchor = new THREE.InstancedBufferAttribute(this.anchor, 3).setUsage(THREE.DynamicDrawUsage);
     this.aChunk = new THREE.InstancedBufferAttribute(this.chunk, 4).setUsage(THREE.DynamicDrawUsage);
     this.aSkirt = new THREE.InstancedBufferAttribute(this.skirt, 1).setUsage(THREE.DynamicDrawUsage);
@@ -137,8 +138,10 @@ export class SphereLOD {
    * @param rot     Matrix3 body -> world
    * @param frustum THREE.Frustum in camera-relative world coordinates
    * @param groundH terrain height under the camera (m), improves split decisions near the ground
+   * @param extra   optional THREE.Sphere (camera-relative world): chunks inside it are kept even
+   *                outside the view frustum (terrain that casts shadows into the view)
    */
-  update(camPF, bodyRelCam, rot, frustum, groundH = 0) {
+  update(camPF, bodyRelCam, rot, frustum, groundH = 0, extra = null) {
     this.count = 0;
     // streamed elevation changed: cached centre heights are stale
     const dem = this.model && this.model.dem;
@@ -176,7 +179,7 @@ export class SphereLOD {
         const wz = e[2] * px + e[5] * py + e[8] * pz + bodyRelCam.z;
         this._sphere.center.set(wx, wy, wz);
         this._sphere.radius = nodeR;
-        if (!frustum.intersectsSphere(this._sphere)) return;
+        if (!frustum.intersectsSphere(this._sphere) && !(extra && extra.intersectsSphere(this._sphere))) return;
       }
       const gh = this.model ? 0 : groundH;
       const gx = px + d[0] * gh - camPF.x, gy = py + d[1] * gh - camPF.y, gz = pz + d[2] * gh - camPF.z;
@@ -199,6 +202,7 @@ export class SphereLOD {
       this.chunk[i * 4 + 1] = u;
       this.chunk[i * 4 + 2] = v;
       this.chunk[i * 4 + 3] = half;
+      this.bound[i] = nodeR;
       if (this.thinSkirts) {
         const s = edge / this.gridN;
         this.skirt[i] = (s * s) / (2 * R) + 0.5;

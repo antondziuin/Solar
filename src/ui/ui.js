@@ -232,6 +232,7 @@ export class UI {
     chk('s-labels', (v) => { this.showLabels = v; });
     chk('s-const', (v) => { if (app.sky.constellations) app.sky.constellations.visible = v; app.settings.constellations = v; });
     chk('s-mw', (v) => { if (app.sky.milkyWay) app.sky.milkyWay.visible = v; app.settings.milkyWay = v; });
+    chk('s-shadows', (v) => { if (app.shadows) app.shadows.enabled = v; });
     chk('s-lock', (v) => { app.controller.autoLock = v; if (!v) app.controller._switchFrame(false); });
     const sld = (id, out, fmt, fn) => {
       const el = this.$(id);
