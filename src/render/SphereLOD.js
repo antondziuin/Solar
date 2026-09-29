@@ -199,8 +199,10 @@ export class SphereLOD {
       this.anchor[i * 3 + 1] = rb * dd[1] - camPF.y;
       this.anchor[i * 3 + 2] = rc * dd[2] - camPF.z;
       this.chunk[i * 4] = face;
-      this.chunk[i * 4 + 1] = u;
-      this.chunk[i * 4 + 2] = v;
+      // tangents of the centre's face angles, in double precision: the GPU's trig functions are
+      // not accurate enough at this scale (see cubeSphere in terrain.js)
+      this.chunk[i * 4 + 1] = Math.tan(u * Math.PI / 4);
+      this.chunk[i * 4 + 2] = Math.tan(v * Math.PI / 4);
       this.chunk[i * 4 + 3] = half;
       this.bound[i] = nodeR;
       if (this.thinSkirts) {

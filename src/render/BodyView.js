@@ -197,6 +197,7 @@ export class BodyView {
     this.lod.update(this.camPF, this.relCam, s.rot, ctx.frustum, this.groundH, extra);
     U.uRot.value.copy(s.rot);
     U.uCamPF.value.copy(this.camPF);
+    U.uGroundH.value = this.groundH;
     U.uVertexCut.value = 4 / (this.lod.splitK * GRID_N);
     U.uPixelCut.value = ctx.pixelAngle * 1.5;
     U.uTime.value = ctx.time;
