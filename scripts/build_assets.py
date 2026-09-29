@@ -107,8 +107,7 @@ def build_earth():
     lights = np.clip((np.minimum(n[..., 0], n[..., 1]) - 0.10) / 0.45, 0, 1)
     Image.fromarray((lights * 255).astype(np.uint8), "L").save(
         os.path.join(OUT, "textures/earth_lights.jpg"), quality=90)
-    water = Image.open(os.path.join(img, "earth-water.png")).convert("L").resize((2048, 1024), Image.BILINEAR)
-    water.save(os.path.join(OUT, "textures/earth_water.png"), optimize=True)
+    # coastlines and lakes: scripts/build_earth_coast.py
     clouds = Image.open(os.path.join(NM, "three-globe/example/clouds/clouds.png")).convert("RGBA")
     a = clouds.getchannel("A")
     a.save(os.path.join(OUT, "textures/earth_clouds.jpg"), quality=85)

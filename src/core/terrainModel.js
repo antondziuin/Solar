@@ -33,6 +33,55 @@ export class EquirectSampler {
   }
 }
 
+const COAST_TEXEL_M = (Math.PI * 6371000) / 4096;
+
+/**
+ * CPU mirror of the Earth's shore distance field (earth_coast.png, see waterAt in terrain.js).
+ * The 8192 x 4096 image is read in small tiles on demand instead of decoding it all at once.
+ */
+export class CoastSampler {
+  constructor(image, lakeLevels) {
+    this.image = image;
+    this.w = image.width; this.h = image.height;
+    this.levels = lakeLevels;
+    this.T = 128;
+    this.tiles = new Map();
+    const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(this.T, this.T) : Object.assign(document.createElement('canvas'), { width: this.T, height: this.T });
+    this.ctx = c.getContext('2d', { willReadFrequently: true });
+  }
+  _tile(tx, ty) {
+    const key = ty * 4096 + tx;
+    let t = this.tiles.get(key);
+    if (!t) {
+      const T = this.T;
+      this.ctx.clearRect(0, 0, T, T);
+      this.ctx.drawImage(this.image, tx * T, ty * T, T, T, 0, 0, T, T);
+      t = this.ctx.getImageData(0, 0, T, T).data;
+      if (this.tiles.size > 256) this.tiles.delete(this.tiles.keys().next().value);
+      this.tiles.set(key, t);
+    }
+    return t;
+  }
+  /** channel c of image pixel (x: column, y: row from the top), wrapped / clamped */
+  _px(x, y, c) {
+    x = ((x % this.w) + this.w) % this.w;
+    y = Math.min(this.h - 1, Math.max(0, y));
+    const T = this.T;
+    return this._tile(Math.floor(x / T), Math.floor(y / T))[((y % T) * T + (x % T)) * 4 + c];
+  }
+  /** [sea distance (m), lake distance (m), lake level or -1e9] at unit direction (x, y, z) */
+  sample(x, y, z) {
+    const [u, v] = dirToUV(x, y, z);
+    const fx = u * this.w - 0.5, fy = (1 - v) * this.h - 0.5;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), ax = fx - x0, ay = fy - y0;
+    const bil = (c) => (this._px(x0, y0, c) * (1 - ax) + this._px(x0 + 1, y0, c) * ax) * (1 - ay)
+      + (this._px(x0, y0 + 1, c) * (1 - ax) + this._px(x0 + 1, y0 + 1, c) * ax) * ay;
+    const dist = (c) => ((bil(c) - 128) / 16) * COAST_TEXEL_M;
+    const idx = this._px(Math.min(this.w - 1, Math.floor(u * this.w)), Math.min(this.h - 1, Math.floor((1 - v) * this.h)), 2);
+    return [dist(0), dist(1), idx > 0 ? this.levels[idx - 1] ?? -1e9 : -1e9];
+  }
+}
+
 const dirToUV = (x, y, z) => [Math.atan2(y, x) * (0.5 / Math.PI) + 0.5, Math.asin(Math.max(-1, Math.min(1, z))) / Math.PI + 0.5];
 const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -318,19 +367,36 @@ export class TerrainModel {
     this.reliefBelow = (edge) => Math.min(fine + (edge > dem.texelM ? Math.min(dem.max - dem.min, edge * 0.5) : edge * 0.3), this.maxRelief);
   }
 
-  /** Surface height used for collision (sea level clamps for Earth). */
+  /** Zero-mean fractal displacement of the shore (m) below the coast map's resolution (shoreNoise in GLSL). */
+  _shoreNoise(x, y, z, cut) {
+    const [a, b, c] = this.radii;
+    const sv = this.seedVec;
+    const k0 = Math.ceil(Math.log2(this.lambda0 / 4000));
+    let lam = this.lambda0 / 2 ** k0, p = 0;
+    for (let i = 0; i < 16; i++) {
+      const w = clamp(Math.log2(lam / cut), 0, 1);
+      if (w <= 0) break;
+      p += w * 0.35 * lam * gnoise((a * x) / lam + sv[0] + 17, (b * y) / lam + sv[1] + 17, (c * z) / lam + sv[2] + 17);
+      lam *= 0.5;
+    }
+    return p;
+  }
+
+  /** Surface height used for collision: flat water surfaces on Earth (mirrors waterAt / surfaceHeight in GLSL). */
   groundHeight(x, y, z, minLam) {
     const h = this.height(x, y, z, minLam);
-    if (this.special === 1 && h < 0 && this.samplers.water) {
-      const [u, v] = dirToUV(x, y, z);
-      if (this.samplers.water.sample(u, v) > 0.5 || h < -25) return 0;
-    }
-    if (this.special === 1 && this.samplers.water) {
-      // shelf seas: the data puts the floor below sea level (mirrors isOcean in GLSL)
-      const [u, v] = dirToUV(x, y, z);
-      if (this.samplers.water.sample(u, v) > 0.5 && this._baseHeight(x, y, z) < 0.5) return 0;
-    }
-    return h;
+    if (this.special !== 1 || !this.coast) return h;
+    const [sea, lake, lakeLevel] = this.coast.sample(x, y, z);
+    const h0 = this._baseHeight(x, y, z, minLam * 0.25);
+    const near = Math.min(sea, lake);
+    const p = near < 3000 && near > -3000 ? this._shoreNoise(x, y, z, minLam) : 0;
+    const coarse = smoothstep(400, 1500, this._res);
+    if (sea < 500 && (1 - coarse) * h + coarse * (sea + p) < 0) return 0;
+    if (lake + p < 0) return lakeLevel > -1e8 ? lakeLevel : h0;
+    let g = h;
+    if (sea < 20000) g = Math.max(g, 0.3);
+    if (lake < 10000 && lakeLevel > -1e8) g = Math.max(g, lakeLevel + 0.3);
+    return g;
   }
 
   /** Per-octave camera offsets (camera * f_k + seed) mod 289, packed for the uniform array. */
