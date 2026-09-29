@@ -113,7 +113,7 @@ export class BodyView {
         U.uHasMap.value = 1;
         // match the mean albedo, but never push the brightest terrain above ~0.95
         U.uMapGain.value = Math.min(target / Math.max(m.mean, 1e-3), 0.95 / Math.max(m.p99, 1e-3));
-        if (m.gray && this.mode !== 'gas') U.uMapGray.value.set(b.surface.mapTint ?? 0.6, Math.max(m.mean, 1e-3));
+        if (m.gray) U.uMapGray.value.set(b.surface.mapTint ?? 0.6, Math.max(m.mean, 1e-3));
         if (this.mode !== 'gas') {
           // where the map has no data (never imaged), the procedural surface continues at the
           // same mean brightness, so the coverage boundary does not show as a bright/dark step
@@ -192,7 +192,9 @@ export class BodyView {
     } else this.groundH = 0;
 
     this.model.camOffsets(this.camPF, MAX_OCTAVES, U.uCamOff.value);
-    this.lod.update(this.camPF, this.relCam, s.rot, ctx.frustum, this.groundH);
+    // relief shadows on the body the camera is at: keep off-screen casters near the camera too
+    const extra = ctx.shadows && ctx.focusId === b.id ? ctx.shadows.prepare(this, ctx, ctx.alt, ctx.camForward) : null;
+    this.lod.update(this.camPF, this.relCam, s.rot, ctx.frustum, this.groundH, extra);
     U.uRot.value.copy(s.rot);
     U.uCamPF.value.copy(this.camPF);
     U.uVertexCut.value = 4 / (this.lod.splitK * GRID_N);
@@ -213,8 +215,10 @@ export class BodyView {
       occ.forEach((o, i) => {
         _v.copy(o.state.pos).sub(s.pos).applyMatrix3(s.rotInv).multiplyScalar(0.001);
         U.uOcc.value[i].set(_v.x, _v.y, _v.z, o.radius);
-        if (o.id === 'earth') U.uOccTint.value[i].set(0.07, 0.022, 0.006);
+        if (o.id === 'earth') U.uOccTint.value[i].set(-1, -1, -1); // refracted light model (eclipse.js)
         else if (o.atmosphere) U.uOccTint.value[i].set(0.01, 0.006, 0.003);
+        // in a moon's umbra on a world with an atmosphere, the sky outside the shadow still glows
+        else if (b.atmosphere) U.uOccTint.value[i].set(1.4e-4, 1.8e-4, 2.4e-4);
         else U.uOccTint.value[i].set(0, 0, 0);
       });
       // planetshine from the parent planet

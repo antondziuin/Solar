@@ -8,12 +8,14 @@ import * as Astronomy from 'astronomy-engine';
 import { BODIES } from './data/bodies.js';
 import { AU } from './core/constants.js';
 import { Ephemeris } from './core/ephemeris.js';
+import { sunlightFraction } from './core/eclipse.js';
 import { TerrainModel, EquirectSampler } from './core/terrainModel.js';
 import { CameraController } from './core/CameraController.js';
 import { BodyView } from './render/BodyView.js';
 import { Sky } from './render/Sky.js';
 import { Orbits } from './render/Orbits.js';
 import { Markers } from './render/Markers.js';
+import { TerrainShadows } from './render/TerrainShadows.js';
 import { UI } from './ui/ui.js';
 import { EarthDEM } from './core/earthDem.js';
 
@@ -110,6 +112,7 @@ class App {
     setText('Loading 41 000 stars…');
     await this.sky.load(BASE);
     this.orbits = new Orbits(this.scene, this.ephem);
+    this.shadows = new TerrainShadows();
     this.markers = new Markers(this.scene, BODIES.length);
 
     // post-processing: sky pass, scene pass, bloom, tone mapping
@@ -188,6 +191,30 @@ class App {
     this.view('apophis', { alt: 1200, lat: Math.asin(p.z) * 180 / Math.PI, lon: Math.atan2(p.y, p.x) * 180 / Math.PI, locked: false });
   }
 
+  /**
+   * Jump to an eclipse: a solar one seen from above the point of greatest eclipse (the Moon's
+   * shadow crossing the Earth), a lunar one looking at the Earth-facing side of the Moon.
+   * Starts shortly before the peak at 1 min/s.
+   */
+  watchEclipse(kind, e) {
+    const peak = e.peak.date.getTime();
+    const lead = kind === 'lunar' ? Math.min(100, (e.sd_partial || e.sd_penum || 60) + 10) : 50;
+    this.clock.setDate(new Date(peak - lead * 60000));
+    this.ui.setRate(60);
+    this.ephem.update(this.clock.ut);
+    const toLatLon = (b, target) => {
+      const d = target.state.pos.clone().sub(b.state.pos).applyMatrix3(b.state.rotInv).normalize();
+      return { lat: Math.asin(d.z) * 180 / Math.PI, lon: Math.atan2(d.y, d.x) * 180 / Math.PI };
+    };
+    if (kind === 'solar') {
+      const ll = e.latitude !== undefined ? { lat: e.latitude, lon: e.longitude } : toLatLon(this.ephem.byId.earth, this.ephem.byId.moon);
+      this.view('earth', { alt: 9e6, lat: ll.lat, lon: ll.lon, locked: true });
+    } else {
+      const ll = toLatLon(this.ephem.byId.moon, this.ephem.byId.earth);
+      this.view('moon', { alt: 7e6, lat: ll.lat, lon: ll.lon, locked: true });
+    }
+  }
+
   setDetail(v) {
     this.settings.detail = v;
     for (const view of Object.values(this.views)) {
@@ -238,7 +265,31 @@ class App {
     else d = body.state.pos.length();
     // partial adaptation to the body's brightness (dark Mercury, dazzling Enceladus)
     const adapt = body && body.type !== 'star' ? Math.min(1.6, Math.max(0.6, Math.sqrt(0.3 / (body.albedo || 0.3)))) : 1;
-    return 5.0 * (d / AU) ** 2 * adapt * 2 ** this.settings.ev;
+    // eyes adapt (up to ~9 stops) when the body looked at - or the place the camera is at - lies
+    // in an eclipse shadow: the red Moon in the Earth's umbra, the landscape under totality
+    let dark = 1;
+    if (body && body.type !== 'star') {
+      const cam = this.controller.position;
+      const sun = this.ephem.byId.sun;
+      const R = body.radius * 1000;
+      const toCam = cam.clone().sub(body.state.pos);
+      if (toCam.length() < R * 1.2) {
+        dark = sunlightFraction(cam, this.ephem.bodies, sun, body, !!body.atmosphere);
+      } else {
+        // adapt to the brightest part of the disc (a partly eclipsed Moon is judged by its lit limb)
+        toCam.normalize();
+        const u = new THREE.Vector3().crossVectors(toCam, Math.abs(toCam.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize();
+        const v = new THREE.Vector3().crossVectors(toCam, u);
+        dark = sunlightFraction(body.state.pos, this.ephem.bodies, sun, body);
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          const p = body.state.pos.clone().addScaledVector(u, Math.cos(a) * R * 0.9).addScaledVector(v, Math.sin(a) * R * 0.9);
+          dark = Math.max(dark, sunlightFraction(p, this.ephem.bodies, sun, body));
+        }
+      }
+      dark = Math.max(dark, 1 / 400);
+    }
+    return 5.0 * (d / AU) ** 2 * adapt * 2 ** this.settings.ev / dark;
   }
 
   _autoExposure(dt) {
@@ -334,9 +385,13 @@ class App {
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
       base: BASE, focusId: (this.controller.fly?.body || this.controller.focus)?.id,
       invViewProj: this._invViewProj, resolution: this._resolution,
+      shadows: this.shadows, alt, camForward: new THREE.Vector3(-me[8], -me[9], -me[10]),
       cameraFacing: (rel, r) => { sphere.center.copy(rel); sphere.radius = r; return frustum.intersectsSphere(sphere); },
     };
+    this.shadows.active = false;
     for (const v of this.viewList) v.update(ctx);
+    if (!this.shadows.active && this.shadows.view) this.shadows.view.material.uniforms.uShadowOn.value = 0;
+    this.shadows.render(this.renderer, ctx);
     this.markers.update(this.viewList, ctx);
     // orbit lines fade out when flying close to a surface
     const fR = this.controller.focus ? this.views[this.controller.focus.id].model.R : 1;

@@ -37,7 +37,8 @@ canvas#view:active { cursor: grabbing; }
 }
 
 /* title / focus readout */
-#hud-title { position: fixed; top: 16px; left: 64px; pointer-events: none; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
+#hud-title { position: fixed; top: 16px; left: 64px; max-width: calc(100vw - 64px - 320px); pointer-events: none; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
+#hud-title > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-title .brand { font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 #focus-name { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; margin-top: 2px; }
 #focus-sub { color: var(--fg-dim); margin-top: 2px; }
@@ -56,7 +57,7 @@ canvas#view:active { cursor: grabbing; }
 
 /* body list */
 #bodies {
-  position: fixed; top: 64px; left: 16px; width: 230px; max-height: calc(100vh - 170px);
+  position: fixed; top: 124px; left: 16px; width: 230px; max-height: calc(100vh - 124px - 104px);
   overflow-y: auto; padding: 8px; scrollbar-width: thin;
   transition: opacity 0.2s, transform 0.2s;
 }
@@ -91,6 +92,8 @@ canvas#view:active { cursor: grabbing; }
 #info h3 { margin: 12px 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-faint); }
 #info .flyby { margin-top: 10px; width: 100%; padding: 7px 10px; border: 1px solid rgba(255, 207, 107, 0.35); border-radius: 8px; background: rgba(255, 207, 107, 0.1); color: var(--accent); font: inherit; cursor: pointer; }
 #info .flyby:hover { background: rgba(255, 207, 107, 0.2); }
+#info .mini { margin-left: 4px; padding: 0 6px; height: 18px; border: 1px solid rgba(255, 207, 107, 0.35); border-radius: 5px; background: rgba(255, 207, 107, 0.1); color: var(--accent); font: 11px var(--font); cursor: pointer; vertical-align: 1px; }
+#info .mini:hover { background: rgba(255, 207, 107, 0.22); }
 #info.collapsed h3, #info.collapsed .flyby { display: none; }
 .label.asteroid { font-size: 11px; color: rgba(225, 200, 150, 0.85); }
 
@@ -114,7 +117,14 @@ canvas#view:active { cursor: grabbing; }
 }
 
 #corner { position: fixed; bottom: 16px; right: 16px; display: flex; gap: 8px; }
-.popover { position: fixed; right: 16px; bottom: 64px; width: 280px; padding: 12px 16px; }
+.popover { position: fixed; right: 16px; bottom: 64px; width: 280px; max-height: calc(100vh - 80px); overflow-y: auto; padding: 12px 16px; scrollbar-width: thin; }
+#help { width: 340px; }
+/* where the time bar reaches under the right-hand column, keep the popovers above it */
+@media (max-width: 1120px) {
+  .popover { bottom: 104px; max-height: calc(100vh - 120px); }
+}
+/* an open settings/help popover takes the right-hand column: the info card steps aside */
+body.popover-open #info { display: none; }
 .popover h3 { margin: 10px 0 6px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-faint); font-weight: 600; }
 .popover h3:first-child { margin-top: 0; }
 .popover .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
@@ -150,15 +160,18 @@ canvas#view:active { cursor: grabbing; }
 #error { position: fixed; inset: auto 16px 16px 16px; padding: 12px; background: #3a1010; border-radius: 10px; color: #ffd0d0; z-index: 20; font-family: var(--mono); white-space: pre-wrap; }
 
 @media (max-width: 720px) {
-  #hud-title { left: 62px; top: 14px; }
+  #hud-title { left: 62px; top: 14px; max-width: calc(100vw - 62px - 112px); }
   #focus-name { font-size: 20px; }
   #info { top: auto; bottom: 140px; left: 16px; right: 16px; width: auto; max-height: 40vh; padding: 10px 14px; }
   #info h2 { font-size: 15px; }
   #info .type { margin-bottom: 0; }
-  #bodies { width: calc(100vw - 32px); max-height: 50vh; }
+  #bodies { top: 118px; width: calc(100vw - 32px); max-height: calc(100vh - 118px - 150px); }
   #timebar { left: 16px; right: 16px; transform: none; }
   .tb-row { flex-wrap: wrap; justify-content: center; }
   #t-set { width: 100%; }
   #corner { bottom: auto; top: 16px; }
-  .popover { top: 64px; bottom: auto; }
+  .popover { top: 118px; bottom: auto; left: 16px; width: auto; max-height: calc(100vh - 118px - 150px); }
+  #help { width: auto; }
+  /* the open body list takes the screen: the info card steps aside */
+  body:has(#bodies:not(.closed)) #info { display: none; }
 }
