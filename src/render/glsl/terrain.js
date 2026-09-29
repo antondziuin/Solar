@@ -20,6 +20,7 @@ uniform float uLambda0;       // wavelength of octave 0 (m)
 uniform vec3 uCamOff[MAX_OCT];// (camera * f_k + seed) mod 289, per octave
 uniform vec3 uNoiseStretch;   // anisotropic noise scaling (gas giants)
 uniform float uVertexCut;     // octave fades out of the geometry below D * uVertexCut
+uniform float uGroundH;       // terrain height below the camera (m)
 uniform float uPixelCut;      // octave fades out of shading below D * uPixelCut
 uniform vec3 uCamPF;          // camera position in the body frame (m) - low precision use only
 uniform int uSpecial;
@@ -333,8 +334,19 @@ float regionAmp(vec3 dir, float lowOct) {
   return m;
 }
 
+// tan(x); a series for small angles: GPU sin/cos/tan are only accurate to ~1e-6 in absolute terms
+// (D3D, most hardware), which for the tiny angles across a nearby chunk (1e-6 rad on a 5 m chunk)
+// would scramble the vertices and tear the surface apart
+vec2 tanSmall(vec2 x) {
+  vec2 x2 = x * x;
+  vec2 s = x * (1.0 + x2 * (1.0 / 3.0 + x2 * (2.0 / 15.0 + x2 * (17.0 / 315.0))));
+  return mix(tan(x), s, step(abs(x), vec2(0.1)));
+}
+
 // exact (dir - dirC) for the tangent-adjusted cube-sphere mapping
-void cubeSphere(int face, vec2 cUV, vec2 dLocal, out vec3 dir, out vec3 ddir) {
+// tc: tangents of the chunk centre's face angles (computed in double precision on the CPU)
+// dLocal: offset from the centre in face units
+void cubeSphere(int face, vec2 tc, vec2 dLocal, out vec3 dir, out vec3 ddir) {
   vec3 N, U, V;
   if (face == 0) { N = vec3(1, 0, 0); U = vec3(0, 1, 0); V = vec3(0, 0, 1); }
   else if (face == 1) { N = vec3(-1, 0, 0); U = vec3(0, -1, 0); V = vec3(0, 0, 1); }
@@ -342,11 +354,9 @@ void cubeSphere(int face, vec2 cUV, vec2 dLocal, out vec3 dir, out vec3 ddir) {
   else if (face == 3) { N = vec3(0, -1, 0); U = vec3(1, 0, 0); V = vec3(0, 0, 1); }
   else if (face == 4) { N = vec3(0, 0, 1); U = vec3(1, 0, 0); V = vec3(0, 1, 0); }
   else { N = vec3(0, 0, -1); U = vec3(-1, 0, 0); V = vec3(0, 1, 0); }
-  vec2 ac = cUV * (PI * 0.25);
-  vec2 da = dLocal * (PI * 0.25);
-  vec2 a = ac + da;
-  vec2 tc = tan(ac);
-  vec2 dt = sin(da) / (cos(a) * cos(ac));
+  // tan(ac + da) - tan(ac) = t (1 + tc^2) / (1 - tc t), t = tan(da)
+  vec2 t = tanSmall(dLocal * (PI * 0.25));
+  vec2 dt = t * (1.0 + tc * tc) / (1.0 - tc * t);
   vec3 pc = N + tc.x * U + tc.y * V;
   vec3 d = dt.x * U + dt.y * V;
   vec3 p = pc + d;
@@ -360,7 +370,7 @@ void cubeSphere(int face, vec2 cUV, vec2 dLocal, out vec3 dir, out vec3 ddir) {
 export const TERRAIN_VERT = /* glsl */ `
 ${COMMON}
 in vec3 iAnchor;   // ellipsoid point at chunk centre, relative to camera (body frame)
-in vec4 iChunk;    // face, centre u, centre v, half size (face units)
+in vec4 iChunk;    // face, tan of the centre's face angles (u, v), half size (face units)
 in float iSkirt;   // skirt depth (m)
 uniform mat3 uRot; // body frame -> world
 
@@ -395,11 +405,17 @@ void main() {
 #if defined(MODE_ROCK)
   // deterministic large-scale relief + finite-difference gradient
   float R = uRadii.x;
+  // octave cut-offs follow the distance to the terrain, not to the reference ellipsoid, which
+  // can be kilometres above or below a camera standing on the ground: first estimate with the
+  // ground height under the camera, then with the large-scale height of the vertex itself
+  vec3 nrm0 = normalize(dir / (uRadii * uRadii));
+  D = length(relSurf + nrm0 * uGroundH);
   gNeed = D * uVertexCut * 0.25;
   gLamTop = uLamTop;
   float h0 = baseHeight(dir);
   gH0 = h0;
   vH0 = h0;
+  D = length(relSurf + nrm0 * h0);
   float dataRes = gDataRes;
 #ifdef EARTH
   gLamTop = 2.0 * dataRes;
@@ -852,9 +868,10 @@ vec3 gasColour(vec3 dir, vec3 nrmOut, float D, out vec3 grad) {
 
 void main() {
   #include <logdepthbuf_fragment>
-  float D = length(vRelSurf);
   vec3 dir = normalize(vDir);
   vec3 nS = normalize(dir / (uRadii * uRadii));
+  // distance to the large-scale terrain (as in the vertex stage)
+  float D = length(vRelSurf + nS * vH0);
   vec3 V = -normalize(vRel);
   vec3 L = uSunDir;
   vec3 pKm = (uCamPF + vRel) * 0.001;

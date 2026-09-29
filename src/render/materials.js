@@ -100,6 +100,7 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uVertexCut: { value: 0.09 },
     uPixelCut: { value: 0.002 },
     uCamPF: { value: new THREE.Vector3() },
+    uGroundH: { value: 0 },
     uSpecial: { value: model.special },
     uTime: { value: 0 },
     uAmp: { value: model.amp },
