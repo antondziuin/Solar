@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as Astronomy from 'astronomy-engine';
 import { AU, C_LIGHT, KM } from '../core/constants.js';
 import { orbitalPeriodDays, osculatingElements } from '../core/ephemeris.js';
 
@@ -43,7 +44,12 @@ export class UI {
     this._buildBodies();
     this._buildLabels();
     this._bindTime();
-    this.$('info').addEventListener('click', (e) => { if (e.target.dataset?.flyby) this.app.apophisFlyby(); });
+    this.$('info').addEventListener('click', (e) => {
+      if (e.target.dataset?.flyby) this.app.apophisFlyby();
+      const ek = e.target.dataset?.eclipse;
+      const ecl = this._ecl;
+      if (ek && ecl) this.app.watchEclipse(ek, ecl[ek]);
+    });
     this._bindSettings();
     this._lastInfo = 0;
     const info = this.$('info');
@@ -312,8 +318,31 @@ export class UI {
     rows.push(['Temperature', b.info?.temp || '—']);
     let extra = '';
     if (b.type === 'asteroid') extra = this._asteroidInfo(b, parent, dEarth, rows);
+    if (b.id === 'earth' || b.id === 'moon') extra += this._eclipseInfo();
     const typeText = b.type === 'star' ? 'G2V star' : this._typeText(b, parent);
     this.$('info').innerHTML = `<h2>${b.fullName || b.name}</h2><div class="type">${typeText}</div><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>${extra}<p>${b.info?.description || ''}</p>`;
+  }
+
+  /** Next solar and lunar eclipses (recomputed only once the cached ones are past). */
+  _eclipses() {
+    const ut = this.app.clock.ut;
+    const c = this._ecl;
+    if (c && ut >= c.from && ut < c.solar.peak.ut + 0.1 && ut < c.lunar.peak.ut + 0.1) return c;
+    try {
+      const t = Astronomy.MakeTime(this.app.clock.date());
+      this._ecl = { from: ut, solar: Astronomy.SearchGlobalSolarEclipse(t), lunar: Astronomy.SearchLunarEclipse(t) };
+    } catch (e) { this._ecl = null; }
+    return this._ecl;
+  }
+
+  _eclipseInfo() {
+    const e = this._eclipses();
+    if (!e) return '';
+    const fmt = (t) => t.date.toISOString().slice(0, 16).replace('T', ' ');
+    const s = e.solar, l = e.lunar;
+    const where = s.latitude !== undefined ? ` · ${Math.abs(s.latitude).toFixed(0)}°${s.latitude >= 0 ? 'N' : 'S'} ${Math.abs(s.longitude).toFixed(0)}°${s.longitude >= 0 ? 'E' : 'W'}` : '';
+    const row = (k, v, kind) => `<tr><td>${k}</td><td>${v} <button class="mini" data-eclipse="${kind}" title="Watch">▸</button></td></tr>`;
+    return `<h3>Eclipses</h3><table>${row('Next solar', `${fmt(s.peak)} · ${s.kind}${where}`, 'solar')}${row('Next lunar', `${fmt(l.peak)} · ${l.kind}`, 'lunar')}</table>`;
   }
 
   /** Orbit, photometry and close approaches of an asteroid (adds rows, returns extra HTML). */

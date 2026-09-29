@@ -40,8 +40,13 @@ npm run build      # static site in dist/ (deployable anywhere, e.g. GitHub Page
 **Light**
 - A single point of truth for light: the Sun's irradiance falls off as 1/r², with auto
   exposure keyed to the body you are looking at (adjustable in *Settings*).
-- Eclipses: every body receives soft penumbral shadows from its parent and sibling moons
-  (solar eclipses on Earth, Io's shadow on Jupiter, red-tinted lunar eclipses).
+- Eclipses: every body receives penumbral shadows from its parent and sibling moons, from the
+  exact overlap of the solar disc (solar eclipses on Earth, Io's shadow on Jupiter). In the
+  Earth's umbra the Moon is lit only by sunlight refracted through the Earth's atmosphere:
+  ~10^-4 of full sunlight, deep red at the centre, orange towards the edge with the turquoise
+  ozone fringe. The eyes adapt (up to ~9 stops) to an eclipsed Moon or to a landscape under
+  totality. The Earth's and the Moon's info cards list the next solar and lunar eclipses
+  (Astronomy Engine) with a button to watch them.
 - Cast shadows of the relief on the body you are at, at every scale: three cascaded shadow
   maps rendered from the Sun with the terrain's own vertex shader (mountains, crater walls,
   large boulders - including casters off screen), plus a short ray march towards the Sun

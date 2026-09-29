@@ -215,8 +215,10 @@ export class BodyView {
       occ.forEach((o, i) => {
         _v.copy(o.state.pos).sub(s.pos).applyMatrix3(s.rotInv).multiplyScalar(0.001);
         U.uOcc.value[i].set(_v.x, _v.y, _v.z, o.radius);
-        if (o.id === 'earth') U.uOccTint.value[i].set(0.07, 0.022, 0.006);
+        if (o.id === 'earth') U.uOccTint.value[i].set(-1, -1, -1); // refracted light model (eclipse.js)
         else if (o.atmosphere) U.uOccTint.value[i].set(0.01, 0.006, 0.003);
+        // in a moon's umbra on a world with an atmosphere, the sky outside the shadow still glows
+        else if (b.atmosphere) U.uOccTint.value[i].set(1.4e-4, 1.8e-4, 2.4e-4);
         else U.uOccTint.value[i].set(0, 0, 0);
       });
       // planetshine from the parent planet
