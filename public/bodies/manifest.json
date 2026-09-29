@@ -72,9 +72,9 @@
  "dione": {
   "map": {
    "file": "bodies/dione_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Dione_64ppd.tif"
   }
  },
  "enceladus": {
@@ -87,9 +87,9 @@
   },
   "map": {
    "file": "bodies/enceladus_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Enceladus_40ppd.tif"
   }
  },
  "europa": {
@@ -122,9 +122,9 @@
  "iapetus": {
   "map": {
    "file": "bodies/iapetus_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Iapetus_16ppd.tif"
   }
  },
  "io": {
@@ -177,9 +177,9 @@
  "mimas": {
   "map": {
    "file": "bodies/mimas_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: MI_170630_DLR_basemap.tif"
   }
  },
  "miranda": {
@@ -257,25 +257,25 @@
  "rhea": {
   "map": {
    "file": "bodies/rhea_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Rhea_32ppd.tif"
   }
  },
  "saturn": {
   "map": {
    "file": "bodies/saturn_map.jpg",
-   "width": 720,
-   "height": 360,
-   "source": "NASA 3D Resources"
+   "width": 2880,
+   "height": 1440,
+   "source": "USGS Astrogeology: saturn.tif"
   }
  },
  "tethys": {
   "map": {
    "file": "bodies/tethys_map.jpg",
-   "width": 1440,
-   "height": 720,
-   "source": "NASA 3D Resources"
+   "width": 4096,
+   "height": 2048,
+   "source": "USGS Astrogeology: Tethys_32ppd.tif"
   }
  },
  "titan": {

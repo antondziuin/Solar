@@ -164,6 +164,8 @@ public/         runtime assets produced by scripts/build_assets.py
   spin state (Lee et al. 2022), 2028–2031 trajectory of JPL orbit solution 220 (via CelestiaContent),
   physical data and close approaches from the JPL Small-Body Database. The orbit table is rebuilt
   with `python3 scripts/build_apophis.py` (needs `astronomy-engine`, SciPy).
+- Saturn and its moons Mimas (DLR), Enceladus, Tethys, Dione, Rhea and Iapetus: Cassini ISS global
+  basemaps from the USGS Astrogeology map server (NASA/JPL/Space Science Institute).
 - Global maps of other moons: [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) (public domain).
 - Lunar albedo map (fallback): [CesiumJS](https://github.com/CesiumGS/cesium) (Apache-2.0).
 - Ephemerides: [Astronomy Engine](https://github.com/cosinekitty/astronomy) (MIT).

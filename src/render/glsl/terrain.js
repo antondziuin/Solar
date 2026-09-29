@@ -811,6 +811,8 @@ vec3 gasColour(vec3 dir, vec3 nrmOut, float D, out vec3 grad) {
     // explicit LOD: the longitude seam would otherwise select the smallest mip along a line
     float lodG = clamp(log2(D * uPixelCut * float(textureSize(uBodyMap, 0).x) / (6.2832 * uRadii.x)), 0.0, 10.0);
     vec3 m = sampleMap(uv, lodG) * uMapGain;
+    // single-band cloud map: its brightness structure on the colours of the band model
+    if (uMapGray.x > 0.0) m = c * (dot(m, vec3(0.3333)) / max(dot(c, vec3(0.3333)), 1e-4));
     c = mix(c, m, smoothstep(0.0006, 0.004, dot(m, vec3(0.3333))));
   }
   c *= 1.0 + uContrast * 0.22 * T;

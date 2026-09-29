@@ -56,13 +56,13 @@ JOBS = [
     ("phobos", "map", "nasa3d:Mars - Phobos", 0),
     ("pluto", "map", "nasa3d:Pluto", 0),
     ("charon", "map", "nasa3d:Pluto - Charon", 0),
-    ("mimas", "map", "nasa3d:Saturn - Mimas", 0),
-    ("enceladus", "map", "nasa3d:Saturn - Enceladus", 0),
-    ("tethys", "map", "nasa3d:Saturn - Tethys", 0),
-    ("dione", "map", "nasa3d:Saturn - Dione", 0),
-    ("rhea", "map", "nasa3d:Saturn - Rhea", 0),
-    ("iapetus", "map", "nasa3d:Saturn - Iapetus", 0),
-    ("saturn", "map", "nasa3d:Saturn", 0),
+    ("mimas", "map", "wms_basemaps/Saturn/Mimas/Cassini_DLR/MI_170630_DLR_basemap.tif", 4096),
+    ("enceladus", "map", "wms_basemaps/Saturn/Enceladus/Cassini/Enceladus_40ppd.tif", 4096),
+    ("tethys", "map", "wms_basemaps/Saturn/Tethys/Cassini/Tethys_32ppd.tif", 4096),
+    ("dione", "map", "wms_basemaps/Saturn/Dione/Cassini/Dione_64ppd.tif", 4096),
+    ("rhea", "map", "wms_basemaps/Saturn/Rhea/Cassini/Rhea_32ppd.tif", 4096),
+    ("iapetus", "map", "wms_basemaps/Saturn/Iapetus/Cassini/Iapetus_16ppd.tif", 4096),
+    ("saturn", "map", "wms_basemaps/Saturn/Saturn/Cassini/saturn.tif", 2880),
     ("miranda", "map", "nasa3d:Uranus - Miranda", 0),
     ("ariel", "map", "nasa3d:Uranus - Ariel", 0),
     ("umbriel", "map", "nasa3d:Uranus - Umbriel", 0),
@@ -83,9 +83,12 @@ ELLIPSOID_DEMS = {"mars"}
 
 def column_longitudes(ds):
     """East longitude (deg) of every column centre."""
-    if ds.crs is None:  # un-georeferenced global map: assume -180..180 simple cylindrical
-        return -180.0 + 360.0 * (np.arange(ds.width) + 0.5) / ds.width
     t = ds.transform
+    if ds.crs is None:
+        if t.a != 1.0 or t.c != 0.0:  # world file in degrees (e.g. 0..360 east, the USGS Cassini maps)
+            return t.c + t.a * (np.arange(ds.width) + 0.5)
+        # un-georeferenced global map: assume -180..180 simple cylindrical
+        return -180.0 + 360.0 * (np.arange(ds.width) + 0.5) / ds.width
     x = t.c + t.a * (np.arange(ds.width) + 0.5)
     p = ds.crs.to_dict()
     if p.get("proj") == "longlat":
@@ -95,9 +98,11 @@ def column_longitudes(ds):
 
 
 def row_latitudes(ds):
-    if ds.crs is None:
-        return 90.0 - 180.0 * (np.arange(ds.height) + 0.5) / ds.height
     t = ds.transform
+    if ds.crs is None:
+        if t.e != 1.0 or t.f != 0.0:
+            return t.f + t.e * (np.arange(ds.height) + 0.5)
+        return 90.0 - 180.0 * (np.arange(ds.height) + 0.5) / ds.height
     y = t.f + t.e * (np.arange(ds.height) + 0.5)
     p = ds.crs.to_dict()
     if p.get("proj") == "longlat":
