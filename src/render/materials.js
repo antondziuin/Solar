@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TERRAIN_VERT, TERRAIN_FRAG, MAX_OCTAVES, MAX_FEATURES, MAX_OCCLUDERS } from './glsl/terrain.js';
 import { gnoise } from '../core/noise.js';
+import { MAX_VORTEX } from '../core/clouds.js';
 
 export const linColor = (hex) => new THREE.Color(hex); // ColorManagement converts sRGB hex -> linear
 
@@ -119,7 +120,7 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uFeatB: { value: feat('B') },
     uFeatC: { value: feat('C') },
     uFeatCount: { value: model.features.length },
-    uTexA: { value: dummyTex }, uTexB: { value: dummyTex }, uTexC: { value: dummyTex }, uTexD: { value: dummyTex }, uTexE: { value: dummyTex },
+    uTexA: { value: dummyTex }, uTexB: { value: dummyTex }, uTexC: { value: dummyTex }, uTexD: { value: dummyTex },
     uSeedVec: { value: new THREE.Vector3(...model.seedVec).multiplyScalar(0.05) },
     uRot: { value: new THREE.Matrix3() },
     uSunDir: { value: new THREE.Vector3(1, 0, 0) },
@@ -189,11 +190,18 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     U.uTexA.value = textures.earth_coast;
     U.uTexC.value = textures.earth_day;
     U.uTexD.value = textures.earth_lights;
-    U.uTexE.value = textures.earth_clouds;
   } else if (s.special === 'moon') {
     U.uTexA.value = textures.moon_albedo;
   }
-  if (mode === 'clouds') U.uTexE.value = textures.earth_clouds;
+  if ((s.special === 'earth' && mode === 'rock') || mode === 'clouds') {
+    // procedural clouds (src/core/clouds.js): the coast field tells land from sea
+    if (mode === 'clouds') U.uTexA.value = textures.earth_coast;
+    U.uCloudPhase = { value: new THREE.Vector4(0, 0, 1, 0) };
+    U.uCloudSeed = { value: [new THREE.Vector3(), new THREE.Vector3()] };
+    U.uVortexA = { value: Array.from({ length: MAX_VORTEX }, () => new THREE.Vector4()) };
+    U.uVortexB = { value: Array.from({ length: MAX_VORTEX }, () => new THREE.Vector4()) };
+    U.uVortexCount = { value: 0 };
+  }
   if (mode === 'gas') {
     U.uBandTex.value = makeBandTexture(s.bands, s.seed || 0, body.id === 'jupiter' ? 0.08 : 0.04);
     (s.storms || []).slice(0, 6).forEach((st, i) => {

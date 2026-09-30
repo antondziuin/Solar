@@ -65,7 +65,7 @@ export const BODIES = [
       kind: 'rock', special: 'earth', amp: 650, hurst: 0.75, ridge: 0.55, crater: 0.0,
       c0: '#6b5a44', c1: '#9c8a6c', albedoNoise: 0.2, seed: 1,
     },
-    clouds: { altitude: 7, texture: 'earth_clouds' },
+    clouds: { altitude: 7 },
     atmosphere: { ms: 0.04,
       height: 100, rayleigh: [5.802e-3, 13.558e-3, 33.1e-3], rayleighH: 8,
       mie: 0.021, mieExt: 0.0233, mieH: 1.2, g: 0.78,

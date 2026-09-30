@@ -82,8 +82,8 @@ class App {
       return t;
     };
     this.dem = new EarthDEM();
-    const [earth_day, earth_lights, earth_clouds, earth_coast, moon_albedo, lakeLevels] = await Promise.all([
-      tex('earth_day.jpg', true), tex('earth_lights.jpg', false), tex('earth_clouds.jpg', false),
+    const [earth_day, earth_lights, earth_coast, moon_albedo, lakeLevels] = await Promise.all([
+      tex('earth_day.jpg', true), tex('earth_lights.jpg', false),
       tex('earth_coast.png', false), tex('moon_albedo.png', false),
       fetch(`${BASE}textures/earth_lakes.json`).then((r) => r.json()),
       this.dem.loadBase(`${BASE}textures/earth_dem.png`),
@@ -91,7 +91,7 @@ class App {
     const earth_lakes = new THREE.DataTexture(new Float32Array(256), 256, 1, THREE.RedFormat, THREE.FloatType);
     lakeLevels.forEach((h, i) => { earth_lakes.image.data[i + 1] = h; });
     earth_lakes.needsUpdate = true;
-    this.textures = { earth_day, earth_lights, earth_clouds, earth_coast, earth_lakes, moon_albedo, dem: this.dem };
+    this.textures = { earth_day, earth_lights, earth_coast, earth_lakes, moon_albedo, dem: this.dem };
     const moonData = await loadImageData(`${BASE}textures/moon_albedo.png`);
 
     setText('Building worlds…');
@@ -383,7 +383,7 @@ class App {
     const sphere = new THREE.Sphere();
     const ctx = {
       camPos, frustum, pixelAngle: this.pixelAngle, pixelRatio: this.pixelRatio, exposure: this.exposure,
-      time: now / 1000, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
+      time: now / 1000, ut: this.clock.ut, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
       base: BASE, focusId: (this.controller.fly?.body || this.controller.focus)?.id,
       invViewProj: this._invViewProj, resolution: this._resolution,

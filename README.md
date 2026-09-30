@@ -90,12 +90,21 @@ chunks are generated entirely on the GPU:
   adds detail *below* the resolution of the data actually in use at each point, so Mont Blanc
   and Everest are where they should be, and the coastline turns fractal only below ~30 m.
   Streaming falls back to the built-in map when offline.
-- **Real imagery.** NASA Blue Marble Next Generation land colour (8192 × 4096, ~5 km), clouds and
-  city lights. Coastlines and lakes come from Natural Earth 1:10m vectors baked into a signed
+- **Real imagery.** NASA Blue Marble Next Generation land colour (8192 × 4096, ~5 km, cloud-free)
+  and city lights. Coastlines and lakes come from Natural Earth 1:10m vectors baked into a signed
   distance field (smooth shores at any zoom, no texel steps); lakes lie flat at their real surface
   level (Great Lakes, Caspian −28 m, Titicaca, …) even where the elevation data carry lake-floor
   bathymetry. Below the map's resolution the shoreline turns fractal; near the camera the
   fine elevation data draw it. Shallow-water colour follows a smooth (B-spline) depth field.
+- **Live weather.** Earth's clouds are procedural and follow the simulated clock. A seasonal
+  climatology sets the scene — the ITCZ as a chain of convective clusters that follows the Sun,
+  clear subtropical highs and deserts, frontal bands along the mid-latitude storm tracks,
+  marine stratocumulus off Peru, Namibia and California, afternoon cumulus over warm land — and
+  the zonal winds carry it (trade easterlies, westerlies). Cloud generations have a life cycle:
+  thin translucent wisps condense, wind up, thicken and spread into dense fields and fronts, then
+  their edges melt back, turn ragged and evaporate. Extratropical cyclones (more and stronger in
+  the winter hemisphere) and, in season, tropical cyclones with an eye follow deterministic
+  tracks, so any date always shows the same weather. The ground below gets the clouds' shadows.
 - **Real shapes and surfaces of other worlds.** Global elevation models from spacecraft
   altimetry and stereo are baked from the USGS Astrogeology archive and loaded when a body
   first appears: the Moon (Kaguya LALT / LRO LOLA), Mars (MGS MOLA), Mercury (MESSENGER),
