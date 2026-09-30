@@ -108,9 +108,7 @@ def build_earth():
     Image.fromarray((lights * 255).astype(np.uint8), "L").save(
         os.path.join(OUT, "textures/earth_lights.jpg"), quality=90)
     # coastlines and lakes: scripts/build_earth_coast.py
-    clouds = Image.open(os.path.join(NM, "three-globe/example/clouds/clouds.png")).convert("RGBA")
-    a = clouds.getchannel("A")
-    a.save(os.path.join(OUT, "textures/earth_clouds.jpg"), quality=85)
+    # clouds are procedural (src/core/clouds.js)
     print("earth done")
 
 

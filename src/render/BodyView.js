@@ -6,6 +6,7 @@ import { AtmosphereShell } from './Atmosphere.js';
 import { RingView } from './Rings.js';
 import { MAX_OCTAVES, MAX_OCCLUDERS } from './glsl/terrain.js';
 import { loadBodyDem, loadBodyMap } from '../core/bodyAssets.js';
+import { CloudWeather } from '../core/clouds.js';
 
 export const SUN_COLOR = new THREE.Vector3(1.0, 0.97, 0.94);
 const GRID_N = 32;
@@ -42,6 +43,7 @@ export class BodyView {
       this.cloudMaterial.uniforms.uCamOff.value = this.material.uniforms.uCamOff.value;
       this.cloudLod = new SphereLOD({ radii, maxRelief: 0, material: this.cloudMaterial, gridN: 24, splitK: 1.2, horizonCull: true, thinSkirts: true });
       this.cloudLod.mesh.renderOrder = 3;
+      this.weather = new CloudWeather();
       scene.add(this.cloudLod.mesh);
     }
     if (body.atmosphere) {
@@ -201,6 +203,12 @@ export class BodyView {
     U.uVertexCut.value = 4 / (this.lod.splitK * GRID_N);
     U.uPixelCut.value = ctx.pixelAngle * 1.5;
     U.uTime.value = ctx.time;
+    if (this.weather) {
+      // weather at the simulated time; the season from the Sun's declination (body frame z = pole)
+      this.weather.update(ctx.ut, U.uSunDir.value.z);
+      this.weather.apply(U);
+      this.weather.apply(this.cloudMaterial.uniforms);
+    }
     U.uAmbient.value = ctx.ambient;
     U.uExposure.value = ctx.exposure;
 
