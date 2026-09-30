@@ -9,7 +9,7 @@ import { BODIES } from './data/bodies.js';
 import { AU } from './core/constants.js';
 import { Ephemeris } from './core/ephemeris.js';
 import { sunlightFraction } from './core/eclipse.js';
-import { TerrainModel, EquirectSampler } from './core/terrainModel.js';
+import { TerrainModel, EquirectSampler, CoastSampler } from './core/terrainModel.js';
 import { CameraController } from './core/CameraController.js';
 import { BodyView } from './render/BodyView.js';
 import { Sky } from './render/Sky.js';
@@ -82,22 +82,24 @@ class App {
       return t;
     };
     this.dem = new EarthDEM();
-    const [earth_day, earth_lights, earth_clouds, earth_water, moon_albedo] = await Promise.all([
+    const [earth_day, earth_lights, earth_clouds, earth_coast, moon_albedo, lakeLevels] = await Promise.all([
       tex('earth_day.jpg', true), tex('earth_lights.jpg', false), tex('earth_clouds.jpg', false),
-      tex('earth_water.png', false), tex('moon_albedo.png', false),
+      tex('earth_coast.png', false), tex('moon_albedo.png', false),
+      fetch(`${BASE}textures/earth_lakes.json`).then((r) => r.json()),
       this.dem.loadBase(`${BASE}textures/earth_dem.png`),
     ]);
-    this.textures = { earth_day, earth_lights, earth_clouds, earth_water, moon_albedo, dem: this.dem };
-    const [waterData, moonData] = await Promise.all([
-      loadImageData(`${BASE}textures/earth_water.png`), loadImageData(`${BASE}textures/moon_albedo.png`),
-    ]);
+    const earth_lakes = new THREE.DataTexture(new Float32Array(256), 256, 1, THREE.RedFormat, THREE.FloatType);
+    lakeLevels.forEach((h, i) => { earth_lakes.image.data[i + 1] = h; });
+    earth_lakes.needsUpdate = true;
+    this.textures = { earth_day, earth_lights, earth_clouds, earth_coast, earth_lakes, moon_albedo, dem: this.dem };
+    const moonData = await loadImageData(`${BASE}textures/moon_albedo.png`);
 
     setText('Building worlds…');
     try { await this.ephem.loadTables(BASE); } catch (e) { console.warn('trajectory tables', e); }
     this.ephem.update(this.clock.ut);
     for (const b of BODIES) {
       const model = new TerrainModel(b);
-      if (b.id === 'earth') { model.samplers = { water: new EquirectSampler(waterData) }; model.dem = this.dem; }
+      if (b.id === 'earth') { model.coast = new CoastSampler(earth_coast.image, lakeLevels); model.dem = this.dem; }
       if (b.id === 'moon') model.samplers = { albedo: new EquirectSampler(moonData) };
       this.views[b.id] = new BodyView(b, model, this.textures, this.scene);
     }

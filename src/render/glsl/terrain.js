@@ -59,9 +59,9 @@ vec2 dirToUV(vec3 d) {
 
 // Map lookup: when magnified, a cubic B-spline (4 bilinear taps) hides the texel grid and
 // the JPEG block pattern that plain bilinear filtering would show as a regular tiling.
-vec3 sampleMap(vec2 uv, float lod) {
-  if (lod > 0.75) return textureLod(uBodyMap, uv, lod).rgb;
-  vec2 sz = vec2(textureSize(uBodyMap, 0));
+vec3 sampleSmooth(sampler2D t, vec2 uv, float lod) {
+  if (lod > 0.75) return textureLod(t, uv, lod).rgb;
+  vec2 sz = vec2(textureSize(t, 0));
   vec2 p = uv * sz - 0.5, f = fract(p), i = p - f;
   vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
   vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
@@ -69,10 +69,11 @@ vec3 sampleMap(vec2 uv, float lod) {
   vec2 w3 = f * f * f / 6.0;
   vec2 g0 = w0 + w1, g1 = w2 + w3;
   vec2 h0 = (i - 0.5 + w1 / g0) / sz, h1 = (i + 1.5 + w3 / g1) / sz;
-  vec3 c = g0.y * (g0.x * textureLod(uBodyMap, vec2(h0.x, h0.y), 0.0).rgb + g1.x * textureLod(uBodyMap, vec2(h1.x, h0.y), 0.0).rgb)
-         + g1.y * (g0.x * textureLod(uBodyMap, vec2(h0.x, h1.y), 0.0).rgb + g1.x * textureLod(uBodyMap, vec2(h1.x, h1.y), 0.0).rgb);
-  return mix(c, textureLod(uBodyMap, uv, lod).rgb, smoothstep(0.25, 0.75, lod));
+  vec3 c = g0.y * (g0.x * textureLod(t, vec2(h0.x, h0.y), 0.0).rgb + g1.x * textureLod(t, vec2(h1.x, h0.y), 0.0).rgb)
+         + g1.y * (g0.x * textureLod(t, vec2(h0.x, h1.y), 0.0).rgb + g1.x * textureLod(t, vec2(h1.x, h1.y), 0.0).rgb);
+  return mix(c, textureLod(t, uv, max(lod, 0.0)).rgb, smoothstep(0.25, 0.75, lod));
 }
+vec3 sampleMap(vec2 uv, float lod) { return sampleSmooth(uBodyMap, uv, lod); }
 
 // fractal detail is tapered above gLamTop (where real elevation data takes over)
 float gLamTop = 1.0;
@@ -238,6 +239,31 @@ float demBaseAt(vec2 ll) {
   return mix(mix(a, b, fx), mix(c, d, fx), fy);
 }
 
+// cubic B-spline over the base map (16 taps): a smooth field whose contours do not show the
+// ~10 km texel grid (used for the colour of shallow water)
+float demBaseSmooth(vec2 ll) {
+  ivec2 sz = textureSize(uDemBase, 0);
+  float x = (ll.y + 180.0) / 360.0 * float(sz.x) - 0.5;
+  float y = (90.0 - ll.x) / 180.0 * float(sz.y) - 0.5;
+  int x0 = int(floor(x)), y0 = int(floor(y));
+  vec2 f = vec2(x - float(x0), y - float(y0));
+  vec2 f2 = f * f, f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0, w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0, w3 = f3 / 6.0;
+  float h = 0.0;
+  for (int j = 0; j < 4; j++) {
+    int yy = clamp(y0 - 1 + j, 0, sz.y - 1);
+    float wy = j == 0 ? w0.y : j == 1 ? w1.y : j == 2 ? w2.y : w3.y;
+    for (int i = 0; i < 4; i++) {
+      int xx = x0 - 1 + i;
+      xx = xx < 0 ? xx + sz.x : xx >= sz.x ? xx - sz.x : xx;
+      float wx = i == 0 ? w0.x : i == 1 ? w1.x : i == 2 ? w2.x : w3.x;
+      h += wx * wy * texelFetch(uDemBase, ivec2(xx, yy), 0).r;
+    }
+  }
+  return h;
+}
+
 float demLevelAt(int l, vec2 uv) {
   float N = 512.0;
   float x = uv.x * N - 0.5, y = uv.y * N - 0.5;
@@ -270,20 +296,68 @@ float demHeight(vec3 dir, float need, out float res) {
   return h;
 }
 
-bool isOcean(vec3 dir, float H) {
-  vec2 uv = dirToUV(dir);
-  float water = textureLod(uTexA, uv, 0.0).r;
-  // the coarse water mask misses shallow banks (Bahamas, reefs): water-coloured imagery counts too
-  vec3 bm = textureLod(uTexC, uv, 1.0).rgb;
-  if (bm.b > bm.r * 1.3 && bm.b > bm.g * 0.8) water = 1.0;
-  // shallow shelf seas (Sunda shelf, Yellow Sea, ...): where the data put the sea floor below
-  // sea level, the sub-resolution fractal must not raise sand banks out of the water
-  return (H < 0.0 && (water > 0.5 || H < -25.0)) || (water > 0.5 && gH0 < 0.5);
-}
 #endif
 
 float gDataRes = 1.0;
 float gDemValid = 0.0;
+
+#ifdef EARTH
+// Sea and lakes (earth_coast.png, scripts/build_earth_coast.py): signed distances to the sea and
+// lake shores (m, positive on land), so that the shore is smooth at any magnification, and the
+// index of the lake whose surface level is looked up in uLakeLevels.
+uniform sampler2D uLakeLevels;
+const float COAST_TEXEL_M = PI * 6371000.0 / 4096.0;
+float gSeaDist = 1e9, gLakeDist = 1e9, gWaterLevel = 0.0, gLakeLevel = -1e9;
+int gWater = 0;
+
+// Shoreline detail below the map's resolution: a zero-mean fractal displacement of the shore
+// (m), wavelengths from ~4 km down to 'cut' (the geometry or pixel footprint)
+float shoreNoise(vec3 relSurf, float cut) {
+  float p = 0.0;
+  int k0 = int(ceil(log2(uLambda0 / 4000.0)));
+  float lam = uLambda0 * exp2(-float(k0));
+  for (int i = 0; i < 16; i++) {
+    int k = k0 + i;
+    if (k >= MAX_OCT) break;
+    float w = clamp(log2(lam / cut), 0.0, 1.0);
+    if (w <= 0.0) break;
+    p += w * 0.35 * lam * gnoise(relSurf / lam + uCamOff[k] + 17.0);
+    lam *= 0.5;
+  }
+  return p;
+}
+
+// 0: land, 1: sea, 2: lake (level in gWaterLevel). lod: map level for the footprint 'cut' (m).
+int waterAt(vec3 dir, float H, vec3 relSurf, float cut) {
+  vec2 uv = dirToUV(dir);
+  vec2 c = textureLod(uTexA, uv, max(log2(cut / COAST_TEXEL_M), 0.0)).rg;
+  gSeaDist = (c.r * 255.0 - 128.0) / 16.0 * COAST_TEXEL_M;
+  gLakeDist = (c.g * 255.0 - 128.0) / 16.0 * COAST_TEXEL_M;
+  ivec2 sz = textureSize(uTexA, 0);
+  ivec2 ip = clamp(ivec2(uv * vec2(sz)), ivec2(0), sz - 1);
+  int idx = int(texelFetch(uTexA, ip, 0).b * 255.0 + 0.5);
+  gLakeLevel = idx > 0 ? texelFetch(uLakeLevels, ivec2(idx, 0), 0).r : -1e9;
+  float near = min(gSeaDist, gLakeDist);
+  float p = near < 3000.0 && near > -3000.0 ? shoreNoise(relSurf, cut) : 0.0;
+  // where the elevation data are fine (near the camera), their own shoreline is more accurate
+  float coarse = smoothstep(400.0, 1500.0, gDataRes);
+  if (gSeaDist < 500.0 && mix(H, gSeaDist + p, coarse) < 0.0) { gWaterLevel = 0.0; return 1; }
+  if (gLakeDist + p < 0.0) {
+    gWaterLevel = idx > 0 ? gLakeLevel : gH0;
+    return 2;
+  }
+  return 0;
+}
+
+// geometry height: flat water surfaces; coastal lowlands no lower than the water next to them
+float surfaceHeight(float H, int w) {
+  if (w == 1) return 0.0;
+  if (w == 2) return gWaterLevel;
+  if (gSeaDist < 20000.0) H = max(H, 0.3);
+  if (gLakeDist < 10000.0 && gLakeLevel > -1e8) H = max(H, gLakeLevel + 0.3);
+  return H;
+}
+#endif
 
 // bilinear height from the body's DEM (x = height, y = coverage)
 vec2 bodyDemAt(vec3 dir) {
@@ -444,7 +518,8 @@ void main() {
 #endif
   float Hgeo = H;
 #ifdef EARTH
-  if (isOcean(dir, H)) Hgeo = 0.0;
+  gWater = waterAt(dir, H, relSurf, D * uVertexCut);
+  Hgeo = surfaceHeight(H, gWater);
 #endif
   Hgeo -= position.z * iSkirt;
   vec3 nrm = normalize(dir / (uRadii * uRadii));
@@ -708,12 +783,25 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   }
 #ifdef EARTH
   vec2 uv = dirToUV(dir);
-  float lod = clamp(log2(D * uPixelCut * 0.5 / 9800.0), 0.0, 12.0);
-  vec3 tex = textureLod(uTexC, uv, lod).rgb;
-  float waterTex = textureLod(uTexA, uv, 0.0).r;
-  // land colour from the Blue Marble; where the fractal coast gains land, borrow a sandy tone
-  bool ocean = isOcean(dir, H);
-  vec3 land = mix(tex, vec3(0.32, 0.27, 0.19), smoothstep(0.3, 0.8, waterTex));
+  float lodRaw = log2(D * uPixelCut * 0.5 / 9800.0);
+  float lod = clamp(lodRaw, 0.0, 12.0);
+  // land colour from the Blue Marble (~10 km). Its texels along a shore mix land and water, so
+  // near the shore the colour is taken a little inland, down the gradient of the shore distance.
+  float shore = min(gSeaDist, gLakeDist);
+  vec2 uvT = uv;
+  if (shore > -12000.0 && shore < 12000.0) {
+    float lodA = max(log2(D * uPixelCut / COAST_TEXEL_M), 0.0);
+    vec2 st = exp2(floor(lodA)) / vec2(textureSize(uTexA, 0));
+    vec2 cx = textureLod(uTexA, uv + vec2(st.x, 0.0), lodA).rg, cy = textureLod(uTexA, uv + vec2(0.0, st.y), lodA).rg;
+    vec2 gr = gSeaDist < gLakeDist ? vec2(cx.r, cy.r) : vec2(cx.g, cy.g);
+    gr = (gr * 255.0 - 128.0) / 16.0 * COAST_TEXEL_M - shore;   // change over one step
+    float gl = length(gr);
+    if (gl > 1.0) uvT += (gr / gl) / vec2(textureSize(uTexA, 0)) * (clamp(12000.0 - shore, 0.0, 12000.0) / COAST_TEXEL_M) * 0.8;
+  }
+  vec3 tex = sampleSmooth(uTexC, uvT, min(lodRaw, 12.0));
+  bool ocean = gWater > 0;
+  // where the fractal shore gains land from the water, a sandy/muddy tone
+  vec3 land = mix(tex, vec3(0.32, 0.27, 0.19), 0.6 * smoothstep(0.0, -300.0, shore));
   // materials below the imagery resolution: bare rock on steep slopes, snow where the imagery
   // shows it (seasonal) or above a latitude-dependent snowline, broken up by slope and noise
   float latDeg = abs(lat) * 180.0 / PI;
@@ -731,12 +819,19 @@ vec3 rockAlbedo(vec3 dir, float H, float alb, float slope, float D, out float sp
   if (ocean) { // ocean
     // the bottom shows through only the first tens of metres (e-folding ~25 m of coastal water,
     // light travels down and back); fractal bumps on a data-submerged shelf keep the data depth
-    float depth = 1.0 - exp(-max(max(-H, -0.5 * gH0), 0.0) / 25.0);
+    float dm;
+    if (gWater == 1) {
+      // coarse data: a smooth depth field (bilinear 10 km texels would outline them in turquoise)
+      float coarse = smoothstep(400.0, 1500.0, gDataRes);
+      float dFine = max(max(-H, -0.5 * gH0), 0.0);
+      dm = coarse > 0.0 ? mix(dFine, max(-demBaseSmooth(vec2(lat, lon) * (180.0 / PI)), 0.0), coarse) : dFine;
+    } else dm = max(gWaterLevel - H, -gLakeDist * 0.02); // lakes: data floor or shore slope
+    float depth = 1.0 - exp(-dm / 25.0);
     c = mix(vec3(0.03, 0.12, 0.13), vec3(0.008, 0.025, 0.06), depth);
     c = mix(c, vec3(0.75, 0.8, 0.85), smoothstep(1.25, 1.35, abs(lat) + 0.05 * n2) * 0.9); // sea ice
     spec = 1.0;
   }
-  lights = textureLod(uTexD, uv, lod).r;
+  lights = sampleSmooth(uTexD, uv, min(lodRaw, 12.0)).r;
   lights = pow(lights, 1.6) * (ocean ? 0.0 : 1.0);
 #endif
   return c;
@@ -975,7 +1070,9 @@ void main() {
 #else
   vec3 Gt = Gr - nS * dot(Gr, nS);
 #ifdef EARTH
-  if (isOcean(dir, H)) {
+  gDataRes = 0.5 * vDataRes;
+  gWater = waterAt(dir, H, vRelSurf, D * uPixelCut);
+  if (gWater > 0) {
     // ocean: gentle wave normals from the same fractal (small scales only)
     Gt = vec3(0.0);
     int kw = int(ceil(log2(uLambda0 / 200.0)));
@@ -1005,7 +1102,7 @@ void main() {
 #if defined(MODE_ROCK)
     Hs = H;
 #ifdef EARTH
-    if (isOcean(dir, H)) Hs = 0.0;
+    Hs = surfaceHeight(H, gWater);
 #endif
 #endif
     pKm = (uRadii * dir + nS * Hs) * 0.001;
@@ -1022,7 +1119,7 @@ void main() {
     vec3 nV = normalize(nS - Gv);
     float micro = 1.0;
 #ifdef EARTH
-    if (!isOcean(dir, H))
+    if (gWater == 0)
 #endif
     micro = microShadow(vRelSurf, D, nV, L, bandK0, bandBase, bandMod);
     if (uShadowOn < 1.5 || uShadowOn > 2.5) sunVis *= micro;
@@ -1035,7 +1132,7 @@ void main() {
 #ifdef EARTH
   {
     vec3 cp = normalize(dir + L * (7.0 / 6371.0) / max(muS_(dir, L), 0.15));
-    float cl = textureLod(uTexE, dirToUV(cp), clamp(log2(D * uPixelCut * 0.5 / 9800.0), 0.0, 12.0)).r;
+    float cl = sampleSmooth(uTexE, dirToUV(cp), min(log2(D * uPixelCut * 0.5 / 9800.0), 12.0)).r;
     irr *= 1.0 - 0.75 * cl * smoothstep(0.0, 2000.0, 7000.0 - max(H, 0.0));
   }
 #endif

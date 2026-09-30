@@ -90,7 +90,12 @@ chunks are generated entirely on the GPU:
   adds detail *below* the resolution of the data actually in use at each point, so Mont Blanc
   and Everest are where they should be, and the coastline turns fractal only below ~30 m.
   Streaming falls back to the built-in map when offline.
-- **Real imagery.** NASA Blue Marble colour, land/sea mask, clouds and city lights.
+- **Real imagery.** NASA Blue Marble Next Generation land colour (8192 × 4096, ~5 km), clouds and
+  city lights. Coastlines and lakes come from Natural Earth 1:10m vectors baked into a signed
+  distance field (smooth shores at any zoom, no texel steps); lakes lie flat at their real surface
+  level (Great Lakes, Caspian −28 m, Titicaca, …) even where the elevation data carry lake-floor
+  bathymetry. Below the map's resolution the shoreline turns fractal; near the camera the
+  fine elevation data draw it. Shallow-water colour follows a smooth (B-spline) depth field.
 - **Real shapes and surfaces of other worlds.** Global elevation models from spacecraft
   altimetry and stereo are baked from the USGS Astrogeology archive and loaded when a body
   first appears: the Moon (Kaguya LALT / LRO LOLA), Mars (MGS MOLA), Mercury (MESSENGER),
@@ -149,8 +154,12 @@ public/         runtime assets produced by scripts/build_assets.py
   Terrarium) — contains SRTM, GMTED2010 and NED (USGS), ETOPO1 (NOAA), GEBCO, and other sources;
   see the [attribution list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md).
   The bundled base map is rebuilt with `python3 scripts/build_earth_dem.py`.
-- Earth imagery (NASA Blue Marble / Black Marble, topography, water mask, clouds): NASA
+- Earth imagery (NASA Blue Marble / Black Marble, topography, clouds): NASA
   Visible Earth (public domain), as packaged in [three-globe](https://github.com/vasturiano/three-globe) (MIT).
+  The day map is rebuilt from the NASA Blue Marble Next Generation tile pyramid (Modest Maps, on
+  Amazon S3) with `python3 scripts/build_earth_day.py`.
+- Coastlines and lakes: [Natural Earth](https://www.naturalearthdata.com/) 1:10m (public domain);
+  rebuild with `python3 scripts/build_earth_coast.py` (needs `rasterio`, SciPy).
 - Planetary elevation models and mosaics: [USGS Astrogeology Science Center](https://astrogeology.usgs.gov/)
   map products (public domain, from NASA/JAXA/ESA mission data: LRO, Kaguya, MGS, MESSENGER,
   New Horizons, Cassini, Mars Express, Galileo, Voyager, Clementine). Rebuild with

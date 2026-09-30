@@ -183,9 +183,10 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     U.uDemBase = { value: textures.dem.baseTex };
     U.uDemLevels = { value: textures.dem.levelTex };
     U.uDemWin = { value: textures.dem.winUniform };
+    U.uLakeLevels = { value: textures.earth_lakes };
   }
   if (s.special === 'earth') {
-    U.uTexA.value = textures.earth_water;
+    U.uTexA.value = textures.earth_coast;
     U.uTexC.value = textures.earth_day;
     U.uTexD.value = textures.earth_lights;
     U.uTexE.value = textures.earth_clouds;
