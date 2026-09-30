@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { TERRAIN_VERT, TERRAIN_FRAG, MAX_OCTAVES, MAX_FEATURES, MAX_OCCLUDERS } from './glsl/terrain.js';
 import { gnoise } from '../core/noise.js';
-import { MAX_VORTEX } from '../core/clouds.js';
 
 export const linColor = (hex) => new THREE.Color(hex); // ColorManagement converts sRGB hex -> linear
 
@@ -194,13 +193,10 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     U.uTexA.value = textures.moon_albedo;
   }
   if ((s.special === 'earth' && mode === 'rock') || mode === 'clouds') {
-    // procedural clouds (src/core/clouds.js): the coast field tells land from sea
-    if (mode === 'clouds') U.uTexA.value = textures.earth_coast;
-    U.uCloudPhase = { value: new THREE.Vector4(0, 0, 1, 0) };
-    U.uCloudSeed = { value: [new THREE.Vector3(), new THREE.Vector3()] };
-    U.uVortexA = { value: Array.from({ length: MAX_VORTEX }, () => new THREE.Vector4()) };
-    U.uVortexB = { value: Array.from({ length: MAX_VORTEX }, () => new THREE.Vector4()) };
-    U.uVortexCount = { value: 0 };
+    // cloud cover keyframes (src/render/CloudMap.js)
+    U.uCloudA = { value: dummyTex };
+    U.uCloudB = { value: dummyTex };
+    U.uCloudBlend = { value: 0 };
   }
   if (mode === 'gas') {
     U.uBandTex.value = makeBandTexture(s.bands, s.seed || 0, body.id === 'jupiter' ? 0.08 : 0.04);

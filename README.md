@@ -96,15 +96,19 @@ chunks are generated entirely on the GPU:
   level (Great Lakes, Caspian −28 m, Titicaca, …) even where the elevation data carry lake-floor
   bathymetry. Below the map's resolution the shoreline turns fractal; near the camera the
   fine elevation data draw it. Shallow-water colour follows a smooth (B-spline) depth field.
-- **Live weather.** Earth's clouds are procedural and follow the simulated clock. A seasonal
-  climatology sets the scene — the ITCZ as a chain of convective clusters that follows the Sun,
-  clear subtropical highs and deserts, frontal bands along the mid-latitude storm tracks,
-  marine stratocumulus off Peru, Namibia and California, afternoon cumulus over warm land — and
-  the zonal winds carry it (trade easterlies, westerlies). Cloud generations have a life cycle:
-  thin translucent wisps condense, wind up, thicken and spread into dense fields and fronts, then
-  their edges melt back, turn ragged and evaporate. Extratropical cyclones (more and stronger in
-  the winter hemisphere) and, in season, tropical cyclones with an eye follow deterministic
-  tracks, so any date always shows the same weather. The ground below gets the clouds' shadows.
+- **Live weather.** Earth's clouds are computed on the GPU as a time-dependent map, following
+  curl-noise flow (Bridson et al. 2007) as used for global cloud cover in J. Wedekind's
+  [sfsim](https://github.com/wedesoft/sfsim): the wind is divergence-free — zonal jets (trades,
+  westerlies up to ~25 m/s), evolving eddies and tracked cyclones — and each point traces its
+  air back 12 hours to read an ever-changing cloud pattern, so clouds drift, stretch and wind
+  up into swirls and filaments. Clouds gather where the air is humid and cyclonic; around and
+  between the systems, broken cumulus fields are drawn as clusters of cells (cellular noise, ~25-60
+  km) that blend into a faint veil when too small to resolve. The season sets a gentle
+  climate (ITCZ clusters, dry subtropics and deserts, storm tracks, marine stratocumulus,
+  afternoon cumulus over land). Small cumulus fields renew within hours, large systems over days;
+  extratropical and, in season, tropical cyclones (dense core, spiral bands, eye) follow
+  deterministic tracks, so any date always shows the same weather. Keyframes every 30 minutes
+  of simulated time are blended; the ground gets the clouds' shadows.
 - **Real shapes and surfaces of other worlds.** Global elevation models from spacecraft
   altimetry and stereo are baked from the USGS Astrogeology archive and loaded when a body
   first appears: the Moon (Kaguya LALT / LRO LOLA), Mars (MGS MOLA), Mercury (MESSENGER),

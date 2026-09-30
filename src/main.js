@@ -383,7 +383,7 @@ class App {
     const sphere = new THREE.Sphere();
     const ctx = {
       camPos, frustum, pixelAngle: this.pixelAngle, pixelRatio: this.pixelRatio, exposure: this.exposure,
-      time: now / 1000, ut: this.clock.ut, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
+      time: now / 1000, ut: this.clock.ut, rate: this.clock.paused ? 0 : this.clock.rate, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
       base: BASE, focusId: (this.controller.fly?.body || this.controller.focus)?.id,
       invViewProj: this._invViewProj, resolution: this._resolution,
@@ -394,6 +394,7 @@ class App {
     for (const v of this.viewList) v.update(ctx);
     if (!this.shadows.active && this.shadows.view) this.shadows.view.material.uniforms.uShadowOn.value = 0;
     this.shadows.render(this.renderer, ctx);
+    for (const v of this.viewList) if (v.cloudMap && v.visible) v.cloudMap.render(this.renderer);
     this.markers.update(this.viewList, ctx);
     // orbit lines fade out when flying close to a surface
     const fR = this.controller.focus ? this.views[this.controller.focus.id].model.R : 1;
