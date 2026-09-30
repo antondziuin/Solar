@@ -102,8 +102,8 @@ float pattern(vec3 p) {
   for (int k = 0; k < 6; k++) {
     float drift = uSrcDrift * float(1 + k / 2 + k / 4);
     float n = gnoise(p * fr + uSrcSeed + vec3(float(k) * 13.1, 0.0, drift));
-    f += amp * (k < 2 ? n : mix(n, 0.3 - 1.4 * abs(n), 0.55));
-    fr *= 2.05; amp *= 0.78;
+    f += amp * (k < 2 ? n : mix(n, 0.3 - 1.4 * abs(n), 0.3));
+    fr *= 2.05; amp *= 0.66;
   }
   return f;
 }
@@ -165,7 +165,7 @@ void main() {
   // r: organised cloud (systems, fronts, clusters); g: density of broken, scattered cumulus around
   // and between them (trade cumulus, open cells behind fronts) - drawn as small cells in the layer
   float cover = smoothstep(0.0, 0.24, c - 0.06) * (1.0 - eye);
-  float scattered = smoothstep(-0.14, 0.02, c - 0.06) * (1.0 - eye);
+  float scattered = smoothstep(-0.07, 0.03, c - 0.06) * (1.0 - eye);
   gl_FragColor = vec4(cover, scattered, 0.0, 1.0);
 }
 `;
