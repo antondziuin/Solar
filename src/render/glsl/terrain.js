@@ -1066,11 +1066,11 @@ void main() {
     vec2 cm = cloudMap(dir, D * uPixelCut);
     float cov = cm.x;
     // fractal cloud detail below the scale of the map, down to the pixel footprint; octaves at
-    // ~40, 20 and 10 km also shape the fringe of broken cloud
+    // ~40 and 20 km also modulate the veil of broken cloud
     int kc = int(ceil(log2(uLambda0 / 40000.0)));
     float lam = uLambda0 * exp2(-float(kc));
     float det = 0.0, amp = 0.5;
-    float cell = 0.0, cellRes = 0.0;
+    float cell = 0.0;
     vec3 gsum = vec3(0.0);
     for (int k = 0; k < 24; k++) {
       int kk = kc + k;
@@ -1081,28 +1081,24 @@ void main() {
       det += wf * amp * nn.x;
       gsum += wf * amp * nn.yzw / lam;
       if (k <= 2) {
-        float ca = k == 0 ? 0.6 : k == 1 ? 0.35 : 0.15;
+        float ca = k == 0 ? 0.8 : k == 1 ? 0.2 : 0.0;
         cell += wf * ca * nn.x;
-        if (k == 0) cellRes = wf;
       }
       amp *= 0.56;
       lam *= 0.5;
     }
     // organised cloud: ragged, fibrous edges
-    float c = cov + det * 0.45 * (0.15 + cov * (1.0 - cov) * 3.0);
-    alpha = clamp(c * 1.2 - 0.04, 0.0, 1.0);
-    alpha = alpha * alpha * (3.0 - 2.0 * alpha);
+    float c = cov + det * 0.14 * (0.15 + cov * (1.0 - cov) * 3.0);
+    alpha = smoothstep(0.0, 0.95, c);
     // scattered cumulus: cells where the small-scale noise exceeds a threshold set by the density;
     // unresolved (far away) they blend into a faint veil of the same mean opacity
-    // broken cloud around the organised systems: a thin, ragged fringe continuing their edges
-    // (the fractal octaves at ~40-10 km), fading to its mean opacity when unresolved
-    float fringe = smoothstep(-0.15, 0.35, cell + 0.5 * det);
-    float puffs = mix(0.45, fringe, cellRes) * cm.y * 0.4;
+    // broken cloud around the organised systems: a thin, calm veil continuing their edges, only
+    // gently modulated by the ~40 km octave
+    float puffs = cm.y * 0.2 * (0.7 + 0.3 * smoothstep(-0.4, 0.4, cell));
     alpha = 1.0 - (1.0 - alpha) * (1.0 - puffs);
-    gsum *= 1.0 + 2.0 * puffs;
     // puffy relief for lighting
     vec3 gt = gsum * 900.0; gt -= nS * dot(gt, nS);
-    n = normalize(nS - gt * 0.35);
+    n = normalize(nS - gt * 0.12);
   }
 #else
   vec3 Gt = Gr - nS * dot(Gr, nS);

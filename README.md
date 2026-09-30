@@ -102,7 +102,7 @@ chunks are generated entirely on the GPU:
   westerlies up to ~25 m/s), evolving eddies and tracked cyclones — and each point traces its
   air back 12 hours to read an ever-changing cloud pattern, so clouds drift, stretch and wind
   up into swirls and filaments. Clouds gather where the air is humid and cyclonic; around the
-  systems, broken cloud forms a thin, ragged fringe continuing their edges. The season sets a gentle
+  systems, broken cloud forms a thin, calm veil continuing their edges. The season sets a gentle
   climate (ITCZ clusters, dry subtropics and deserts, storm tracks, marine stratocumulus,
   afternoon cumulus over land). Small cumulus fields renew within hours, large systems over days;
   extratropical and, in season, tropical cyclones (dense core, spiral bands, eye) follow
