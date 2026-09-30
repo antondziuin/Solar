@@ -1,16 +1,8 @@
-// Procedural, time-dependent cloud cover for the Earth: the CPU half.
-//
-// The cloud field (terrain.js, cloudCover) is fractal noise on the sphere, shaped by a seasonal
-// climatology, carried by the zonal winds and slowly evolving. Pure advection by a sheared wind
-// would stretch the pattern without limit, so two copies of it are advected over overlapping
-// periods and cross-faded (the classic flow-map scheme): each copy lives PERIOD, is weighted by a
-// triangle that peaks when its advection offset is zero, and is replaced by a fresh pattern
-// (new seed) while its weight is zero. Cyclones are vortices that twist the field; their tracks
-// are deterministic functions of time, so any date shows the same weather.
+// Cyclone tracks for the Earth's cloud map (src/render/CloudMap.js). The tracks are
+// deterministic functions of time, so any date always shows the same weather.
 import * as THREE from 'three';
 
 export const MAX_VORTEX = 16;
-const PERIOD = 4 * 86400; // s
 const DEG = Math.PI / 180;
 
 /** deterministic hash -> [0, 1) */
@@ -37,8 +29,6 @@ BASINS.forEach(([lat, lon, hemi], i) => SLOTS.push({ kind: 'tc', hemi, lat, lon,
 
 export class CloudWeather {
   constructor() {
-    this.phase = new THREE.Vector4();
-    this.seeds = [new THREE.Vector3(), new THREE.Vector3()];
     this.vortA = Array.from({ length: MAX_VORTEX }, () => new THREE.Vector4());
     this.vortB = Array.from({ length: MAX_VORTEX }, () => new THREE.Vector4());
     this.count = 0;
@@ -50,20 +40,6 @@ export class CloudWeather {
    * @param sinDecl sine of the Sun's declination (season)
    */
   update(ut, sinDecl) {
-    const t = ut * 86400;
-    // two advected copies of the pattern, half a period apart
-    for (let j = 0; j < 2; j++) {
-      const s = t / PERIOD + 0.5 * j;
-      const cycle = Math.floor(s);
-      const f = s - cycle;
-      const age = (f - 0.5) * PERIOD; // advection time, zero when the weight peaks
-      const seed = this.seeds[j];
-      // a fresh pattern each cycle; the pattern also evolves slowly through the noise's 3rd axis
-      seed.set(hash(cycle, j, 1) * 200 + 20, hash(cycle, j, 2) * 200 + 20, hash(cycle, j, 3) * 200 + 20 + (age / PERIOD) * 0.9);
-      if (j === 0) { this.phase.x = age; this.phase.z = 1 - Math.abs(2 * f - 1); } else this.phase.y = age;
-    }
-    this.phase.w = sinDecl;
-
     // cyclones
     let n = 0;
     const days = ut;
@@ -97,7 +73,7 @@ export class CloudWeather {
         radius = (3 + 2 * r3) * DEG;
         twist = sl.hemi * (4 + 2 * r3) * env;
         boost = 0.55 * env;
-        eye = 0.08 * radius * env;
+        eye = 0.16 * radius * env;
       }
       unit(lat, lon, this._c);
       this.vortA[n].set(this._c.x, this._c.y, this._c.z, twist);
@@ -105,14 +81,5 @@ export class CloudWeather {
       n++;
     }
     this.count = n;
-  }
-
-  /** copy the state into a material's uniforms */
-  apply(U) {
-    U.uCloudPhase.value.copy(this.phase);
-    U.uCloudSeed.value[0].copy(this.seeds[0]);
-    U.uCloudSeed.value[1].copy(this.seeds[1]);
-    for (let i = 0; i < MAX_VORTEX; i++) { U.uVortexA.value[i].copy(this.vortA[i]); U.uVortexB.value[i].copy(this.vortB[i]); }
-    U.uVortexCount.value = this.count;
   }
 }

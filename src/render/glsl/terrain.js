@@ -672,130 +672,40 @@ float ringShadow(vec3 pKm, vec3 L) {
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
 #if defined(EARTH) || defined(MODE_CLOUDS)
-// ---------------------------------------------------------------- procedural clouds (Earth)
-// Fractal cloud field on the sphere, shaped by a seasonal climatology, carried by the zonal
-// winds, evolving, and twisted by cyclones. The time-dependent state (two cross-faded advected
-// copies of the pattern, cyclone tracks) comes from src/core/clouds.js.
-#define MAX_VORTEX 16
-uniform vec4 uCloudPhase;          // advection ages (s) of the two copies, weight of the first, sin(solar declination)
-uniform vec3 uCloudSeed[2];        // noise offsets of the two copies
-uniform vec4 uVortexA[MAX_VORTEX]; // cyclone centre (unit vector), twist (rad, > 0 counter-clockwise)
-uniform vec4 uVortexB[MAX_VORTEX]; // angular radius (rad), cover boost, eye radius (rad)
-uniform int uVortexCount;
-const float CLOUD_R = 6.371e6;
-float sq(float x) { return x * x; }
+// ---------------------------------------------------------------- clouds (Earth)
+// Cloud cover from the time-dependent map computed on the GPU (src/render/CloudMap.js): two
+// keyframes and the blend between them; B-spline sampling when magnified.
+uniform sampler2D uCloudA, uCloudB;
+uniform float uCloudBlend;
 float gCloudShadow = 0.0;
+const float CLOUD_TEXEL_M = 2.0 * PI * 6.371e6 / 1024.0;
 
-// mean zonal wind at cloud level (m/s, > 0 eastward): trade easterlies, westerlies, polar easterlies
-float zonalWind(float latDeg) {
-  float a = abs(latDeg);
-  return -7.0 * exp(-sq(a / 16.0)) + 16.0 * exp(-sq((a - 45.0) / 14.0)) - 4.0 * smoothstep(65.0, 80.0, a);
-}
-
-vec3 rotZ(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z); }
-
-// Cloud pattern (~zero mean), wavelengths from ~3000 km down to 'cut' (radians). Domain warping
-// makes swirls and filaments. At the synoptic scale the field is organised as long, narrow frontal
-// bands in the storm tracks (ridged noise: high where the noise crosses zero; band = 1) and as
-// clusters elsewhere; below that, billowy octaves break fields into cells. The warp grows over
-// the pattern's life (0..1): the cloud field winds up into swirls as it ages.
-float cloudFbm(vec3 q, vec3 seed, float cut, float band, float life) {
-  q += (0.14 + 0.22 * life) * vec3(gnoise(q * 1.6 + seed), gnoise(q * 1.6 + seed + 17.1), gnoise(q * 1.6 + seed + 33.7));
-  q += 0.05 * vec3(gnoise(q * 6.0 + seed + 51.3), gnoise(q * 6.0 + seed + 68.9), gnoise(q * 6.0 + seed + 85.2));
-  float n0 = gnoise(q * 2.2 + seed), n1 = gnoise(q * 4.6 + seed + 7.7);
-  float blob = 0.62 * n0 + 0.32 * n1;
-  float ridge = 0.34 - 1.7 * abs(n0 + 0.45 * n1);
-  float f = mix(blob, ridge, band) * 0.55;
-  float amp = 0.16, fr = 9.5;
-  for (int k = 0; k < 9; k++) {
-    float wk = clamp(log2(1.0 / (fr * cut)), 0.0, 1.0);
-    if (wk <= 0.0) break;
-    float n = gnoise(q * fr + seed);
-    f += wk * amp * mix(n, 0.3 - 1.4 * abs(n), 0.5);   // billowy, ~zero mean
-    fr *= 2.03; amp *= 0.76;
+// cellular (Worley) noise: distance to the nearest of randomly placed feature points (one per
+// lattice cell, 3x3x3 search) and a random number of that point
+vec2 worley(vec3 x) {
+  vec3 b = floor(x);
+  float d = 9.0, id = 0.0;
+  for (int i = 0; i < 27; i++) {
+    vec3 c = b + vec3(float(i % 3 - 1), float((i / 3) % 3 - 1), float(i / 9 - 1));
+    vec3 h = hash3(c);
+    vec3 q = c + h - x;
+    float e = dot(q, q);
+    if (e < d) { d = e; id = fract(h.x * 7.13 + h.y * 3.71 + h.z * 1.97); }
   }
-  return f;
+  return vec2(sqrt(d), id);
 }
 
-float deck(float lat, float lon, float lat0, float lon0, float dlat, float dlon) {
-  float x = (lat - lat0) / dlat, y = (lon - lon0) / dlon;
-  return exp(-x * x - y * y);
+// (organised cover, density of scattered cumulus) at unit direction dir (body frame);
+// cut: sampling footprint (m)
+vec2 cloudMap(vec3 dir, float cut) {
+  vec2 uv = dirToUV(dir);
+  float lod = log2(max(cut, 1.0) / CLOUD_TEXEL_M);
+  return mix(sampleSmooth(uCloudA, uv, lod).rg, sampleSmooth(uCloudB, uv, lod).rg, uCloudBlend);
 }
-
-// large-scale tendency of the cover: seasonal belts, land, time of day
-float cloudClimate(vec3 dir, float latDeg, out float itcz) {
-  float declDeg = asin(uCloudPhase.w) * (180.0 / PI);
-  float a = abs(latDeg);
-  float hs = latDeg >= 0.0 ? 1.0 : -1.0;
-  float winter = clamp(-hs * declDeg / 23.4, 0.0, 1.0);
-  itcz = 0.30 * exp(-sq((latDeg - 5.0 - 0.4 * declDeg) / 6.0));     // ITCZ, follows the Sun (see cloudLayer)
-  float b = 0.0;
-  float sub = a - 0.35 * hs * declDeg;                                      // subtropical highs too
-  b -= 0.30 * exp(-sq((sub - 24.0) / 9.0));
-  b += (0.14 + 0.10 * winter) * exp(-sq((a - 55.0) / 13.0));          // storm tracks
-  b += 0.10 * smoothstep(62.0, 75.0, a);
-  // land (coast distance field, averaged over ~300 km): dry subtropical deserts, and cumulus in the
-  // afternoon where it is warm
-  float land = smoothstep(0.40, 0.62, textureLod(uTexA, dirToUV(dir), 6.0).r);
-  b -= 0.24 * land * exp(-sq((sub - 22.0) / 11.0));
-  vec3 e = cross(vec3(0.0, 0.0, 1.0), dir);
-  e /= max(length(e), 1e-6);
-  float up = dot(uSunDir, dir), east = dot(uSunDir, e);
-  float afternoon = smoothstep(0.1, 0.6, up) * smoothstep(0.5, -0.4, east);
-  b += 0.14 * land * afternoon * exp(-sq((latDeg - 0.8 * declDeg) / 25.0));
-  // marine stratocumulus over the cold eastern boundary currents
-  float lon = atan(dir.y, dir.x) * (180.0 / PI);
-  b += 0.15 * (deck(latDeg, lon, -18.0, -82.0, 10.0, 10.0) + deck(latDeg, lon, -17.0, 6.0, 9.0, 9.0)
-             + deck(latDeg, lon, 28.0, -128.0, 8.0, 10.0) + deck(latDeg, lon, 23.0, -24.0, 7.0, 9.0)
-             + deck(latDeg, lon, -28.0, 104.0, 7.0, 8.0)) * (1.0 - land);
-  return b;
-}
-
-// One generation of clouds. Its life runs over CLOUD_PERIOD (age -P/2..P/2); its strength w rises
-// from 0 to 1 and falls back. Condensation: young, only the cores of the field exceed the
-// threshold - thin, translucent wisps - which then thicken and spread into dense fields and
-// fronts. Evaporation: the threshold rises again, the edges melt back and turn ragged (the fine
-// billowy octaves decide where), the clouds shrink, thin out and vanish.
-const float CLOUD_PERIOD = 4.0 * 86400.0; // = PERIOD in src/core/clouds.js
-float cloudLayer(vec3 p, float omega, float age, vec3 seed, float cutR, float band, float bias, float itcz, float w) {
-  if (w < 0.02) return 0.0;
-  float life = age / CLOUD_PERIOD + 0.5;
-  vec3 q = rotZ(p, -omega * age);
-  float f = cloudFbm(q, seed, cutR, band, life);
-  // the ITCZ is a chain of convective clusters (~500-1000 km), not a continuous band
-  if (itcz > 0.01) f += itcz * clamp(0.2 + 2.2 * gnoise(q * 9.0 + seed + 91.0), 0.0, 1.6);
-  float x = f + bias - 0.03 - 0.2 * pow(1.0 - w, 1.5);
-  return smoothstep(0.0, mix(0.4, 0.22, w), x);
-}
-
-// cloud cover (0..1) at unit direction dir (body frame); cut: smallest wavelength wanted (m)
+// mean opacity, for shadows on the ground
 float cloudCover(vec3 dir, float cut) {
-  vec3 p = dir;
-  float boost = 0.0, eye = 0.0;
-  for (int i = 0; i < MAX_VORTEX; i++) {
-    if (i >= uVortexCount) break;
-    vec3 c = uVortexA[i].xyz;
-    float r = uVortexB[i].x;
-    float cd = dot(dir, c);
-    if (cd < cos(3.0 * r)) continue;
-    float d = acos(clamp(cd, -1.0, 1.0));
-    float s = exp(-(d * d) / (r * r));
-    float ang = uVortexA[i].w * s;                      // twist about the cyclone's axis (Rodrigues)
-    float ca = cos(ang), sa = sin(ang);
-    p = p * ca + cross(c, p) * sa + c * dot(c, p) * (1.0 - ca);
-    boost += uVortexB[i].y * s;
-    float re = uVortexB[i].z;
-    if (re > 0.0) eye = max(eye, 1.0 - smoothstep(re * 0.6, re * 1.5, d));
-  }
-  float latDeg = asin(clamp(dir.z, -1.0, 1.0)) * (180.0 / PI);
-  float omega = zonalWind(latDeg) / (CLOUD_R * max(cos(radians(latDeg)), 0.15));
-  float cutR = max(cut, 30000.0) / CLOUD_R;
-  float band = smoothstep(26.0, 40.0, abs(latDeg)) * (1.0 - smoothstep(66.0, 80.0, abs(latDeg)));
-  float itcz;
-  float bias = cloudClimate(dir, latDeg, itcz) + boost;
-  float cA = cloudLayer(p, omega, uCloudPhase.x, uCloudSeed[0], cutR, band, bias, itcz, uCloudPhase.z);
-  float cB = cloudLayer(p, omega, uCloudPhase.y, uCloudSeed[1], cutR, band, bias, itcz, 1.0 - uCloudPhase.z);
-  return (1.0 - (1.0 - cA) * (1.0 - cB)) * (1.0 - eye);
+  vec2 m = cloudMap(dir, cut);
+  return m.x + 0.35 * m.y * (1.0 - m.x);
 }
 #endif
 
@@ -1167,12 +1077,15 @@ void main() {
 #elif defined(MODE_CLOUDS)
   {
     n = nS;
-    albedo = vec3(0.85);
-    float cov = cloudCover(dir, D * uPixelCut);
-    // fractal cloud detail below the scale of the cover field, down to the pixel footprint
+    albedo = vec3(0.9);
+    vec2 cm = cloudMap(dir, D * uPixelCut);
+    float cov = cm.x;
+    // fractal cloud detail below the scale of the map, down to the pixel footprint; octaves at
+    // ~40, 20 and 10 km also make the cells of the scattered cumulus fields
     int kc = int(ceil(log2(uLambda0 / 40000.0)));
     float lam = uLambda0 * exp2(-float(kc));
     float det = 0.0, amp = 0.5;
+    float cell = 0.0, cellRes = 0.0;
     vec3 gsum = vec3(0.0);
     for (int k = 0; k < 24; k++) {
       int kk = kc + k;
@@ -1182,15 +1095,40 @@ void main() {
       vec4 nn = gnoised(vRelSurf / lam + uCamOff[kk] + vec3(det * 0.6, 0.0, 0.0));
       det += wf * amp * nn.x;
       gsum += wf * amp * nn.yzw / lam;
+      if (k <= 2) {
+        float ca = k == 0 ? 0.6 : k == 1 ? 0.35 : 0.15;
+        cell += wf * ca * nn.x;
+        if (k == 0) cellRes = wf;
+      }
       amp *= 0.56;
       lam *= 0.5;
     }
-    float c = cov + det * 0.45 * (0.15 + cov * (1.0 - cov) * 3.0);
+    // organised cloud: ragged, fibrous edges
+    float c = cov + det * 0.6 * (0.15 + cov * (1.0 - cov) * 3.0);
     alpha = clamp(c * 1.2 - 0.04, 0.0, 1.0);
     alpha = alpha * alpha * (3.0 - 2.0 * alpha);
+    // scattered cumulus: cells where the small-scale noise exceeds a threshold set by the density;
+    // unresolved (far away) they blend into a faint veil of the same mean opacity
+    // cumulus cells: Worley (cellular) noise at ~60 and ~25 km (clusters of cells of random size,
+    // growing with the density), outlines broken up by the finer octaves, random opacity
+    float r0 = 0.1 + 0.26 * cm.y;
+    float fraction = clamp(5.0 * r0 * r0, 0.0, 1.0) * 0.6;   // mean opacity of the cells, unresolved
+    float resolved = 0.0;
+    if (cellRes > 0.0 && cm.y > 0.03) {
+      int kw = min(int(ceil(log2(uLambda0 / 60000.0))), MAX_OCT - 2);
+      vec2 w1 = worley(vRelSurf / (uLambda0 * exp2(-float(kw))) + uCamOff[kw]);
+      vec2 w2 = worley(vRelSurf / (uLambda0 * exp2(-float(kw + 1))) + uCamOff[kw + 1] + 17.0);
+      float e = 0.45 * cell;
+      float a1 = 1.0 - smoothstep(0.0, 0.2, w1.x + e - r0 * (0.5 + w1.y));
+      float a2 = 1.0 - smoothstep(0.0, 0.2, w2.x + e - r0 * (0.3 + 0.9 * w2.y));
+      resolved = max(a1 * (0.55 + 0.45 * w1.y), a2 * (0.4 + 0.4 * w2.y));
+    }
+    float puffs = mix(fraction, resolved, cellRes) * smoothstep(0.03, 0.25, cm.y) * 0.85;
+    alpha = 1.0 - (1.0 - alpha) * (1.0 - puffs);
+    gsum *= 1.0 + 2.0 * puffs;
     // puffy relief for lighting
     vec3 gt = gsum * 900.0; gt -= nS * dot(gt, nS);
-    n = normalize(nS - gt * 0.5);
+    n = normalize(nS - gt * 0.35);
   }
 #else
   vec3 Gt = Gr - nS * dot(Gr, nS);
