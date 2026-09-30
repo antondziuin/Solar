@@ -165,7 +165,7 @@ void main() {
   // r: organised cloud (systems, fronts, clusters); g: density of broken, scattered cumulus around
   // and between them (trade cumulus, open cells behind fronts) - drawn as small cells in the layer
   float cover = smoothstep(0.0, 0.24, c - 0.06) * (1.0 - eye);
-  float scattered = smoothstep(-0.14, 0.02, c - 0.06) * (1.0 - eye);
+  float scattered = smoothstep(-0.07, 0.03, c - 0.06) * (1.0 - eye);
   gl_FragColor = vec4(cover, scattered, 0.0, 1.0);
 }
 `;

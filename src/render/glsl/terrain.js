@@ -680,21 +680,6 @@ uniform float uCloudBlend;
 float gCloudShadow = 0.0;
 const float CLOUD_TEXEL_M = 2.0 * PI * 6.371e6 / 1024.0;
 
-// cellular (Worley) noise: distance to the nearest of randomly placed feature points (one per
-// lattice cell, 3x3x3 search) and a random number of that point
-vec2 worley(vec3 x) {
-  vec3 b = floor(x);
-  float d = 9.0, id = 0.0;
-  for (int i = 0; i < 27; i++) {
-    vec3 c = b + vec3(float(i % 3 - 1), float((i / 3) % 3 - 1), float(i / 9 - 1));
-    vec3 h = hash3(c);
-    vec3 q = c + h - x;
-    float e = dot(q, q);
-    if (e < d) { d = e; id = fract(h.x * 7.13 + h.y * 3.71 + h.z * 1.97); }
-  }
-  return vec2(sqrt(d), id);
-}
-
 // (organised cover, density of scattered cumulus) at unit direction dir (body frame);
 // cut: sampling footprint (m)
 vec2 cloudMap(vec3 dir, float cut) {
@@ -1081,7 +1066,7 @@ void main() {
     vec2 cm = cloudMap(dir, D * uPixelCut);
     float cov = cm.x;
     // fractal cloud detail below the scale of the map, down to the pixel footprint; octaves at
-    // ~40, 20 and 10 km also make the cells of the scattered cumulus fields
+    // ~40, 20 and 10 km also shape the fringe of broken cloud
     int kc = int(ceil(log2(uLambda0 / 40000.0)));
     float lam = uLambda0 * exp2(-float(kc));
     float det = 0.0, amp = 0.5;
@@ -1104,26 +1089,15 @@ void main() {
       lam *= 0.5;
     }
     // organised cloud: ragged, fibrous edges
-    float c = cov + det * 0.6 * (0.15 + cov * (1.0 - cov) * 3.0);
+    float c = cov + det * 0.45 * (0.15 + cov * (1.0 - cov) * 3.0);
     alpha = clamp(c * 1.2 - 0.04, 0.0, 1.0);
     alpha = alpha * alpha * (3.0 - 2.0 * alpha);
     // scattered cumulus: cells where the small-scale noise exceeds a threshold set by the density;
     // unresolved (far away) they blend into a faint veil of the same mean opacity
-    // cumulus cells: Worley (cellular) noise at ~60 and ~25 km (clusters of cells of random size,
-    // growing with the density), outlines broken up by the finer octaves, random opacity
-    float r0 = 0.1 + 0.26 * cm.y;
-    float fraction = clamp(5.0 * r0 * r0, 0.0, 1.0) * 0.6;   // mean opacity of the cells, unresolved
-    float resolved = 0.0;
-    if (cellRes > 0.0 && cm.y > 0.03) {
-      int kw = min(int(ceil(log2(uLambda0 / 60000.0))), MAX_OCT - 2);
-      vec2 w1 = worley(vRelSurf / (uLambda0 * exp2(-float(kw))) + uCamOff[kw]);
-      vec2 w2 = worley(vRelSurf / (uLambda0 * exp2(-float(kw + 1))) + uCamOff[kw + 1] + 17.0);
-      float e = 0.45 * cell;
-      float a1 = 1.0 - smoothstep(0.0, 0.2, w1.x + e - r0 * (0.5 + w1.y));
-      float a2 = 1.0 - smoothstep(0.0, 0.2, w2.x + e - r0 * (0.3 + 0.9 * w2.y));
-      resolved = max(a1 * (0.55 + 0.45 * w1.y), a2 * (0.4 + 0.4 * w2.y));
-    }
-    float puffs = mix(fraction, resolved, cellRes) * smoothstep(0.03, 0.25, cm.y) * 0.85;
+    // broken cloud around the organised systems: a thin, ragged fringe continuing their edges
+    // (the fractal octaves at ~40-10 km), fading to its mean opacity when unresolved
+    float fringe = smoothstep(-0.15, 0.35, cell + 0.5 * det);
+    float puffs = mix(0.45, fringe, cellRes) * cm.y * 0.4;
     alpha = 1.0 - (1.0 - alpha) * (1.0 - puffs);
     gsum *= 1.0 + 2.0 * puffs;
     // puffy relief for lighting

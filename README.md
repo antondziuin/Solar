@@ -101,9 +101,8 @@ chunks are generated entirely on the GPU:
   [sfsim](https://github.com/wedesoft/sfsim): the wind is divergence-free — zonal jets (trades,
   westerlies up to ~25 m/s), evolving eddies and tracked cyclones — and each point traces its
   air back 12 hours to read an ever-changing cloud pattern, so clouds drift, stretch and wind
-  up into swirls and filaments. Clouds gather where the air is humid and cyclonic; around and
-  between the systems, broken cumulus fields are drawn as clusters of cells (cellular noise, ~25-60
-  km) that blend into a faint veil when too small to resolve. The season sets a gentle
+  up into swirls and filaments. Clouds gather where the air is humid and cyclonic; around the
+  systems, broken cloud forms a thin, ragged fringe continuing their edges. The season sets a gentle
   climate (ITCZ clusters, dry subtropics and deserts, storm tracks, marine stratocumulus,
   afternoon cumulus over land). Small cumulus fields renew within hours, large systems over days;
   extratropical and, in season, tropical cyclones (dense core, spiral bands, eye) follow
