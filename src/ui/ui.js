@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as Astronomy from 'astronomy-engine';
 import { AU, C_LIGHT, KM } from '../core/constants.js';
 import { orbitalPeriodDays, osculatingElements } from '../core/ephemeris.js';
+import { Detonation, blastEnvironment, optimumHOB } from '../core/nuclear.js';
 
 const RATES = [-31557600, -2629800, -604800, -86400, -21600, -3600, -600, -60, -1, 1, 60, 600, 3600, 21600, 86400, 604800, 2629800, 31557600];
 
@@ -96,7 +97,7 @@ export class UI {
     const toggleList = () => {
       nav.classList.toggle('closed');
       if (!nav.classList.contains('closed') && window.innerWidth < 720) {
-        this.$('settings').hidden = true; this.$('help').hidden = true; this._syncPopover?.();
+        this.$('settings').hidden = true; this.$('help').hidden = true; this.$('nuke').hidden = true; this._syncPopover?.();
       }
     };
     this.$('btn-bodies').addEventListener('click', toggleList);
@@ -125,6 +126,7 @@ export class UI {
     for (const [id, el] of this.labels) el.classList.toggle('focus', id === body.id);
     this.$('focus-name').textContent = body.name;
     this._lastInfo = 0;
+    this._nukeEffects?.();
   }
 
   _buildLabels() {
@@ -205,7 +207,8 @@ export class UI {
       if (e.key === ']') this.$('t-faster').click();
       if (e.key === '[') this.$('t-slower').click();
       if (e.key === 'n') this.$('t-now').click();
-      if (e.key === 'h') { this.$('help').hidden = !this.$('help').hidden; this.$('settings').hidden = true; this._syncPopover?.(); }
+      if (e.key === 'h') this._togglePopover?.('help');
+      if (e.key === 'x') this._togglePopover?.('nuke');
     });
     this._setRate = setRate;
     setRate();
@@ -222,17 +225,27 @@ export class UI {
 
   _bindSettings() {
     const app = this.app;
-    const syncPopover = () => document.body.classList.toggle('popover-open', !this.$('settings').hidden || !this.$('help').hidden);
+    const POPS = ['settings', 'help', 'nuke'];
+    const syncPopover = () => {
+      document.body.classList.toggle('popover-open', POPS.some((id) => !this.$(id).hidden));
+      // the nuclear test panel arms the click-to-detonate
+      app.nukes.armed = !this.$('nuke').hidden;
+      document.body.classList.toggle('nuke-armed', app.nukes.armed);
+    };
     this._syncPopover = syncPopover;
-    const pop = (btn, id, other) => this.$(btn).addEventListener('click', () => {
+    const toggle = (id) => {
       this.$(id).hidden = !this.$(id).hidden;
-      this.$(other).hidden = true;
+      for (const o of POPS) if (o !== id) this.$(o).hidden = true;
       // on narrow screens the popover and the body list share the space
       if (!this.$(id).hidden && window.innerWidth < 720) this.$('bodies').classList.add('closed');
+      if (id === 'nuke' && !this.$(id).hidden) { app.nukes.loadNoise(); this._nukeEffects(); }
       syncPopover();
-    });
-    pop('btn-settings', 'settings', 'help');
-    pop('btn-help', 'help', 'settings');
+    };
+    this._togglePopover = toggle;
+    this.$('btn-settings').addEventListener('click', () => toggle('settings'));
+    this.$('btn-help').addEventListener('click', () => toggle('help'));
+    this.$('btn-nuke').addEventListener('click', () => toggle('nuke'));
+    this._bindNuke();
     const chk = (id, fn) => { const el = this.$(id); el.addEventListener('change', () => fn(el.checked)); fn(el.checked); };
     chk('s-orbits', (v) => { app.orbits.visible = v; });
     chk('s-labels', (v) => { this.showLabels = v; });
@@ -257,6 +270,63 @@ export class UI {
     });
     sld('s-lod', 'o-lod', (v) => v.toFixed(1), (v) => app.setDetail(v));
     sld('s-res', 'o-res', (v) => `${Math.round(v * 100)}%`, (v) => app.setResolution(v));
+  }
+
+  _bindNuke() {
+    const nk = this.app.nukes;
+    const slider = this.$('n-yield');
+    const fmt = (kt) => (kt >= 1000 ? `${+(kt / 1000).toPrecision(kt >= 1e4 ? 3 : 2)} Mt` : kt >= 1 ? `${+kt.toPrecision(kt >= 100 ? 3 : 2)} kt` : `${+(kt * 1000).toPrecision(2)} t`);
+    const set = (kt) => {
+      nk.settings.yieldKt = kt;
+      this.$('o-yield').textContent = fmt(kt);
+      this.$('n-presets').querySelectorAll('button').forEach((b) => b.classList.toggle('active', Math.abs(Math.log(+b.dataset.kt / kt)) < 0.01));
+      this._nukeEffects();
+    };
+    slider.addEventListener('input', () => set(+(10 ** parseFloat(slider.value)).toPrecision(3)));
+    const presets = [['Davy Crockett', 0.02], ['Little Boy', 15], ['Fat Man', 21], ['W76', 100], ['W88', 475], ['B83', 1200], ['Castle Bravo', 15000], ['Tsar Bomba', 50000]];
+    for (const [name, kt] of presets) {
+      const b = document.createElement('button');
+      b.textContent = name;
+      b.title = fmt(kt);
+      b.dataset.kt = kt;
+      b.addEventListener('click', () => { slider.value = Math.log10(kt); set(kt); });
+      this.$('n-presets').appendChild(b);
+    }
+    document.querySelectorAll('input[name="n-burst"]').forEach((r) => r.addEventListener('change', () => { nk.settings.mode = r.value; this._nukeEffects(); }));
+    const snd = this.$('n-sound');
+    snd.addEventListener('change', () => { nk.settings.sound = snd.checked; });
+    this.$('n-clear').addEventListener('click', () => nk.clear());
+    nk.onDetonate = () => this._nukeEffects();
+    set(nk.settings.yieldKt);
+  }
+
+  /** Damage radii of the selected weapon on the focused body (approximate, after Glasstone & NUKEMAP). */
+  _nukeEffects() {
+    const el = this.$('n-effects');
+    if (!el || this.$('nuke').hidden) return;
+    const app = this.app;
+    const body = app.controller.focus;
+    if (!body || app.views[body.id].model.kind !== 'rock') {
+      this.$('n-effects-title').textContent = 'Effects';
+      el.innerHTML = '<tr><td colspan="2">Choose a planet or moon with a solid surface.</td></tr>';
+      return;
+    }
+    const s = app.nukes.settings;
+    const env = blastEnvironment(body);
+    const d = new Detonation(s.yieldKt, s.mode === 'surface' ? 0 : optimumHOB(s.yieldKt), env, { seed: 0, seed2: 0 });
+    const e = d.effects;
+    const km = (m) => (m >= 1000 ? `${(m / 1000).toFixed(m < 1e4 ? 2 : 1)} km` : `${m.toFixed(0)} m`);
+    const rows = [['Fireball radius', km(e.fireball)]];
+    if (!d.surface) rows.push(['Burst height', km(d.hob)]);
+    if (e.crater) rows.push(['Crater radius', km(e.crater)]);
+    if (env.air) {
+      rows.push(['Heavy blast (20 psi)', km(e.psi20)], ['Moderate blast (5 psi)', km(e.psi5)], ['Light blast (1 psi)', km(e.psi1)],
+        ['3rd-degree burns', km(e.thermal)], ['Cloud top', km(e.cloudTop)], ['Cloud radius', km(e.cloudR)]);
+    } else {
+      rows.push(['Ejecta reach', km(d.vmax ** 2 / env.g)], ['Ejecta in flight', `${(Math.SQRT2 * d.vmax / env.g / 60).toFixed(1)} min`]);
+    }
+    this.$('n-effects-title').textContent = `Effects on ${body.name}${env.air ? '' : ' (no air)'}`;
+    el.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
   }
 
   updateTime() {

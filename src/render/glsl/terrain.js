@@ -671,6 +671,92 @@ float ringShadow(vec3 pKm, vec3 L) {
 
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
+// ---------------------------------------------------------------- nuclear explosions
+// (src/render/NuclearBlasts.js) positions relative to the camera, body frame (m)
+#define MAX_BL 4
+uniform vec4 uBlastG[MAX_BL]; // ground zero, age (s)
+uniform vec4 uBlastL[MAX_BL]; // fireball centre, fireball radius
+uniform vec4 uBlastI[MAX_BL]; // fireball luminous intensity rgb (display x m^2), crater radius
+uniform vec4 uBlastS[MAX_BL]; // thermal-burn radius, fires (0/1), radius of landed ejecta, airless (0/1)
+uniform int uBlastCount;
+
+// irradiance from the fireballs (point lights with the fireball's size)
+vec3 blastLight(vec3 n, vec3 rel) {
+  vec3 E = vec3(0.0);
+  for (int i = 0; i < MAX_BL; i++) {
+    if (i >= uBlastCount) break;
+    vec3 Lv = uBlastL[i].xyz - rel;
+    float d2 = dot(Lv, Lv);
+    float r = uBlastL[i].w;
+    E += uBlastI[i].rgb / (d2 + r * r) * max(dot(n, Lv * inversesqrt(max(d2, 1.0))), 0.0);
+  }
+  return E;
+}
+
+#if defined(MODE_ROCK)
+// scorched ground and fires inside the thermal-burn radius, the crater, on airless bodies the
+// fresh (bright) ejecta blanket with rays; returns the glow of the fires
+vec3 blastScars(vec3 rel, vec3 up, float land, inout vec3 albedo) {
+  vec3 glow = vec3(0.0);
+  for (int i = 0; i < MAX_BL; i++) {
+    if (i >= uBlastCount) break;
+    float age = uBlastG[i].w;
+    if (age <= 0.0) continue;
+    vec3 dv = rel - uBlastG[i].xyz;
+    vec3 hz = dv - up * dot(dv, up);
+    float r = length(hz);
+    float Rc = uBlastI[i].w, Rth = uBlastS[i].x;
+    if (r > max(Rth * 1.3, Rc * 8.0 + uBlastS[i].z * 1.2)) continue;
+    float sc = max(Rth, Rc * 4.0);
+    float n1 = gnoise(dv / max(sc * 0.07, 1.0) + float(i) * 7.31);
+    float n2 = gnoise(dv / max(sc * 0.012, 0.5) + 3.17);
+    if (uBlastS[i].w > 0.5) {
+      // airless: dark crater floor, bright raised rim, fresh ejecta landing outwards with rays
+      vec3 e1 = normalize(cross(up, abs(up.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+      float az = atan(dot(hz, cross(up, e1)), dot(hz, e1));
+      float rays = gnoise(vec3(cos(az) * 5.0, sin(az) * 5.0, log(r + 1.0) * 0.25) + float(i));
+      float landed = Rc * 0.6 + uBlastS[i].z;
+      float blanket = smoothstep(landed * 1.02, landed * 0.9, r) * pow(clamp(Rc / max(r, 1.0), 0.0, 1.0), 1.6);
+      float rim = smoothstep(0.75 * Rc, Rc, r) * smoothstep(1.4 * Rc, Rc, r);
+      albedo *= 1.0 + 0.9 * blanket * smoothstep(-0.25, 0.35, rays) + 0.4 * rim * step(0.0, age);
+      albedo *= mix(1.0, 0.7, smoothstep(0.85 * Rc, 0.6 * Rc, r));
+    } else {
+      // charred ground: the thermal pulse arrives with the flash
+      float edge = Rth * (1.0 + 0.3 * n1);
+      float charr = smoothstep(edge, edge * 0.2, r) * smoothstep(0.0, 1.5, age) * land * uBlastS[i].y;
+      // only what burns chars: patchy, strongest towards ground zero
+      float burnt = charr * smoothstep(-0.35, 0.45, n1 + 0.5 * n2 + 0.6 * (1.0 - r / max(edge, 1.0)));
+      albedo *= mix(1.0, 0.45, burnt);
+      // glassy crater of a surface burst
+      if (Rc > 0.0) albedo *= mix(1.0, 0.45, smoothstep(Rc * 1.1, Rc * 0.8, r) * land);
+      // fires: patchy, flickering, burning down over hours
+      float spots = smoothstep(0.25, 0.65, n2 + 0.35 * n1) * burnt;
+      float burn = smoothstep(1.0, 12.0, age) * exp(-age / 14400.0);
+      float flick = 0.65 + 0.35 * gnoise(vec3(dv.xy / 35.0, age * 0.8));
+      glow += vec3(1.0, 0.38, 0.09) * spots * burn * flick;
+    }
+  }
+  return glow;
+}
+#endif
+
+#if defined(MODE_CLOUDS)
+// the heat and the blast wave clear the cloud deck around ground zero
+float blastClear(vec3 rel, vec3 up) {
+  float k = 1.0;
+  for (int i = 0; i < MAX_BL; i++) {
+    if (i >= uBlastCount) break;
+    float age = uBlastG[i].w;
+    if (age <= 0.0 || uBlastS[i].w > 0.5) continue;
+    vec3 dv = rel - uBlastG[i].xyz;
+    float r = length(dv - up * dot(dv, up)) / max(uBlastS[i].x, 1.0);
+    float n = gnoise(dv / max(uBlastS[i].x * 0.15, 1.0));
+    k *= mix(1.0, smoothstep(0.35, 0.9, r + 0.12 * n), smoothstep(1.0, 20.0, age) * exp(-age / 7200.0));
+  }
+  return k;
+}
+#endif
+
 #if defined(EARTH) || defined(MODE_CLOUDS)
 // ---------------------------------------------------------------- clouds (Earth)
 // Cloud cover from the time-dependent map computed on the GPU (src/render/CloudMap.js): two
@@ -1099,6 +1185,7 @@ void main() {
     // puffy relief for lighting
     vec3 gt = gsum * 900.0; gt -= nS * dot(gt, nS);
     n = normalize(nS - gt * 0.12);
+    alpha *= blastClear(vRel, nS);
   }
 #else
   vec3 Gt = Gr - nS * dot(Gr, nS);
@@ -1125,6 +1212,14 @@ void main() {
   n = normalize(nS - Gt);
   float slope = length(Gt);
   albedo = rockAlbedo(dir, H, alb, slope, D, spec, lights);
+  vec3 blastGlow = vec3(0.0);
+  if (uBlastCount > 0) {
+    float land = 1.0;
+#ifdef EARTH
+    land = gWater > 0 ? 0.0 : 1.0;
+#endif
+    blastGlow = blastScars(vRel, nS, land, albedo);
+  }
 #endif
 
   // The interpolated position lies on the flat triangle between vertices, which at coarse LOD
@@ -1224,6 +1319,17 @@ void main() {
   }
 #endif
   radiance += albedo * uAmbient * 0.02;
+#if defined(MODE_ROCK) || defined(MODE_CLOUDS)
+  // the flash of nuclear explosions; fires on the scorched ground
+  if (uBlastCount > 0) {
+#if defined(MODE_CLOUDS)
+    radiance += albedo / PI * blastLight(n, vRel) * 0.8;
+#else
+    radiance += albedo / PI * blastLight(n, vRel);
+    radiance += blastGlow * uExposure * 0.25;
+#endif
+  }
+#endif
 
 #ifdef ATMO
   {
