@@ -66,6 +66,7 @@ class App {
     renderer.toneMappingExposure = 1;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer = renderer;
+    this._checkGpu(renderer);
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1e14);
@@ -168,6 +169,26 @@ class App {
     setTimeout(() => this.nukes.loadNoise(), 1500);
     this._last = performance.now();
     renderer.setAnimationLoop((t) => this.frame(t));
+  }
+
+  /**
+   * Which GPU WebGL actually runs on. Browsers fall back to a software rasteriser (the CPU draws
+   * everything) when hardware acceleration is off or the GPU / driver is blocklisted: say so.
+   */
+  _checkGpu(renderer) {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    this.gpu = (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || 'unknown';
+    this.softwareGL = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render/i.test(this.gpu);
+    console.info(`WebGL renderer: ${this.gpu}${this.softwareGL ? ' (software, on the CPU)' : ''}`);
+    const info = document.getElementById('gpu-info');
+    if (info) info.textContent = `Graphics: ${this.gpu}`;
+    const warn = document.getElementById('gpu-warning');
+    if (warn && this.softwareGL) {
+      warn.hidden = false;
+      warn.querySelector('.gpu-name').textContent = this.gpu;
+      warn.querySelector('button').addEventListener('click', () => { warn.hidden = true; });
+    }
   }
 
   /** Jump to a viewpoint: lat/lon in degrees (body-fixed when locked), altitude in metres. */

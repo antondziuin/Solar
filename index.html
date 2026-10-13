@@ -95,11 +95,20 @@
         <dt>X</dt><dd>Nuclear test: click a surface to detonate</dd>
       </dl>
       <p>Positions come from VSOP87/ELP-based ephemerides (Astronomy Engine) and JPL mean elements; orientations follow the IAU rotation models. Earth's relief is real elevation data streamed from the AWS Terrain Tiles; all surfaces continue as GPU fractals below the data resolution, down to centimetres.</p>
+      <p id="gpu-info" class="credits"></p>
       <p class="credits">Elevation: Terrain Tiles (Mapzen/Tilezen) — SRTM, GMTED2010, NED (USGS), ETOPO1 (NOAA), GEBCO and others. Imagery: NASA Blue Marble &amp; Black Marble. Planetary elevation models and maps: USGS Astrogeology (LRO, Kaguya, MGS, MESSENGER, New Horizons, Cassini, Mars Express, Galileo, Voyager, Clementine), NASA 3D Resources. Shape models: P. Stooke (NASA PDS), Thomas et al. (NASA PDS), Ernst et al. 2023 (CC-BY-4.0), Amalthea map by ItzImcool (CC-BY-4.0), via CelestiaContent. Apophis: radar shape model (Lawrence &amp; Benner, NASA PDS), spin state (Lee et al. 2022), orbit from JPL solution 220 and the JPL Small-Body Database. Stars: HYG via d3-celestial.</p>
     </div>
 
     <div id="loading"><div class="spinner"></div><div id="loading-text">Loading the Solar System…</div></div>
     <div id="error" hidden></div>
+    <div id="gpu-warning" class="panel" hidden>
+      <b>Running without the graphics card.</b> The browser draws WebGL in software on the CPU
+      (<span class="gpu-name"></span>), so everything is very slow. Turn on hardware acceleration
+      (Chrome / Edge: Settings → System → “Use graphics acceleration when available”, then restart;
+      check <code>chrome://gpu</code>), update the GPU driver, and on laptops with two GPUs let the
+      browser use the high-performance one (Windows: Settings → Display → Graphics).
+      <button aria-label="Dismiss">×</button>
+    </div>
 
     <script type="module" src="./src/main.js"></script>
   </body>
