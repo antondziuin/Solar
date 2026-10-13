@@ -53,6 +53,7 @@ canvas#view:active { cursor: grabbing; }
 .icon-btn:hover { border-color: rgba(255, 255, 255, 0.25); }
 .icon-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.6; fill: currentColor; }
 .icon-btn svg path, .icon-btn svg circle[fill="none"] { fill: none; }
+.icon-btn svg path.fill { fill: currentColor; stroke: none; }
 #btn-bodies { position: fixed; top: 16px; left: 16px; }
 
 /* body list */
@@ -119,6 +120,29 @@ canvas#view:active { cursor: grabbing; }
 #corner { position: fixed; bottom: 16px; right: 16px; display: flex; gap: 8px; }
 .popover { position: fixed; right: 16px; bottom: 64px; width: 280px; max-height: calc(100vh - 80px); overflow-y: auto; padding: 12px 16px; scrollbar-width: thin; }
 #help { width: 340px; }
+
+/* nuclear test */
+#nuke { width: 300px; }
+#btn-nuke { color: #ffb347; }
+body.nuke-armed #btn-nuke { background: rgba(255, 140, 40, 0.25); border-color: rgba(255, 170, 80, 0.6); box-shadow: 0 0 14px rgba(255, 140, 40, 0.35); }
+body.nuke-armed canvas#view { cursor: crosshair; }
+#nuke .hint { margin: 0 0 8px; color: var(--fg-dim); line-height: 1.4; font-size: 12px; }
+#nuke .presets { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+#nuke .presets button {
+  padding: 3px 7px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(255, 255, 255, 0.05);
+  color: var(--fg-dim); font: 11px var(--font); cursor: pointer;
+}
+#nuke .presets button:hover { color: var(--fg); background: rgba(255, 255, 255, 0.1); }
+#nuke .presets button.active { color: #ffd29a; border-color: rgba(255, 170, 80, 0.55); background: rgba(255, 140, 40, 0.16); }
+#nuke input[type="radio"] { accent-color: var(--accent); }
+#nuke table { width: 100%; border-collapse: collapse; }
+#nuke td { padding: 2px 0; color: var(--fg-faint); font-size: 12px; }
+#nuke td:last-child { font-family: var(--mono); font-size: 11px; text-align: right; color: var(--fg-dim); }
+#nuke .wide {
+  margin-top: 10px; width: 100%; padding: 6px 10px; border: 1px solid var(--panel-border); border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06); color: var(--fg); font: 12px var(--font); cursor: pointer;
+}
+#nuke .wide:hover { background: rgba(255, 255, 255, 0.12); }
 /* where the time bar reaches under the right-hand column, keep the popovers above it */
 @media (max-width: 1120px) {
   .popover { bottom: 104px; max-height: calc(100vh - 120px); }

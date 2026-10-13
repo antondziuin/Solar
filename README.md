@@ -65,6 +65,42 @@ npm run build      # static site in dist/ (deployable anywhere, e.g. GitHub Page
 - Sky: 41 000 real stars (to magnitude 8) with colours from their B–V index, the Milky Way
   from isophote maps, optional constellation lines.
 
+## Nuclear test
+
+Press the trefoil button (or `X`), pick a yield (from the 20 t Davy Crockett to the 50 Mt Tsar
+Bomba) and an airburst or a surface burst, then click the surface of a planet or moon. Ground zero
+is the point drawn under the cursor (read from the depth buffer, so real elevation included).
+The explosion follows the empirical scaling laws of Glasstone & Dolan, *The Effects of Nuclear
+Weapons* (1977), with the damage radii cross-checked against NUKEMAP:
+
+- **Flash and fireball.** The first pulse, the breakaway minimum and the second thermal maximum
+  (t ≈ 0.042 s·W^0.44, W in kt) carry ~35 % of the yield as heat. The fireball (max radius
+  ≈ 66 m·W^0.4) glows as the black body of its effective temperature from the Stefan–Boltzmann
+  law: blue-white, then yellow, orange and a dull red core that lingers inside the cloud. It is a
+  real light source: it lights the ground, the clouds and, through Rayleigh and Mie scattering,
+  the air around it, and the eyes adapt to it (the scene goes dark for a moment, then recovers).
+- **Blast wave.** A Sedov–Taylor point explosion turning into a sound wave; in humid air a Wilson
+  condensation shell flashes behind the front, and it raises a rolling wall of dust along the
+  ground (a white base surge over water). When it reaches the camera the view shakes and, at
+  real-time speed, you hear the crack and the rumble with the right delay.
+- **Mushroom cloud.** The hot gas rises as a buoyant vortex ring (the toroidal circulation rolls
+  the cloud) and stabilises after ~10 minutes at the heights measured in the atmospheric tests
+  (22 km for 1 Mt, 64 km for 50 Mt); the stem of dust and debris is drawn up by the afterwinds,
+  the cloud is browned by nitrogen dioxide at first and whitened by condensing water later, the
+  wind bends it, and it spreads and disperses over the following hour. It is ray-marched as a
+  volume lit by the Sun (with self-shadowing and the sunlight that is left at its height, so a
+  cloud top can still be lit after sunset), by the sky and by its own hot core, with the aerial
+  perspective of the atmosphere in front of it.
+- **On the ground** the thermal pulse chars the land within the third-degree-burn radius and sets
+  fires that glow at night for hours; the heat clears the cloud deck above ground zero.
+- **Other worlds.** Mars and Titan get clouds of their own dust in their own air. On airless
+  bodies (the Moon, Mercury, the icy moons) there is no fireball cloud and no blast wave: a
+  short-lived glowing vapour plume, a crater and a ballistic ejecta curtain — an inverted cone
+  that rises and falls back in the body's gravity for minutes, laying down a bright, rayed
+  ejecta blanket.
+
+The clock is set to real time when you detonate; speed it up to watch the cloud stabilise.
+
 ## What "infinitely detailed" means here
 
 Surfaces are not limited by texture resolution. Each body is a cube-sphere quadtree whose
@@ -142,6 +178,7 @@ chunks are generated entirely on the GPU:
 | Arrows · `W A S D` | Move · look |
 | `Space` · `[` `]` · `N` | Pause · time rate · jump to now |
 | `B` · `H` | Body list · help |
+| `X`, then click a surface | Nuclear test (detonate under the cursor) |
 
 Focus Apophis and press *Watch the 13 April 2029 flyby* in its info card to see it pass the Earth.
 

@@ -18,6 +18,7 @@ import { Markers } from './render/Markers.js';
 import { TerrainShadows } from './render/TerrainShadows.js';
 import { UI } from './ui/ui.js';
 import { EarthDEM } from './core/earthDem.js';
+import { NuclearBlasts } from './render/NuclearBlasts.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -118,7 +119,8 @@ class App {
     this.markers = new Markers(this.scene, BODIES.length);
 
     // post-processing: sky pass, scene pass, bloom, tone mapping
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    // the scene's depth is kept (as a texture) for the volumetric explosions and for picking
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType) });
     this.composer = new EffectComposer(renderer, rt);
     const skyPass = new RenderPass(this.sky.scene, this.sky.camera);
     skyPass.clearColor = new THREE.Color(0, 0, 0);
@@ -129,6 +131,8 @@ class App {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), this.settings.bloom, 0.55, 1.3);
     this.composer.addPass(skyPass);
     this.composer.addPass(mainPass);
+    this.nukes = new NuclearBlasts(this);
+    this.composer.addPass(this.nukes.pass);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
@@ -140,7 +144,16 @@ class App {
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
-    this.canvas.addEventListener('dblclick', (e) => this.pick(e));
+    this.canvas.addEventListener('dblclick', (e) => { if (!this.nukes.armed) this.pick(e); });
+    // armed: a click (not a drag) on a surface detonates there
+    let down = null;
+    this.canvas.addEventListener('pointerdown', (e) => { down = e.button === 0 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
+    this.canvas.addEventListener('pointerup', (e) => {
+      if (!down || !this.nukes.armed) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      if (moved < 6 && performance.now() - down.t < 600) this.nukes.detonateAt(e.clientX, e.clientY);
+      down = null;
+    });
 
     // start at Earth, or at the body named in the URL hash
     const start = BODIES.find((b) => b.id === location.hash.slice(1)) || this.ephem.byId.earth;
@@ -152,6 +165,7 @@ class App {
     });
 
     document.getElementById('loading').classList.add('done');
+    setTimeout(() => this.nukes.loadNoise(), 1500);
     this._last = performance.now();
     renderer.setAnimationLoop((t) => this.frame(t));
   }
@@ -358,6 +372,7 @@ class App {
     this.clock.tick(dt);
     this.ephem.update(this.clock.ut);
     this.controller.update(dt);
+    this.nukes.prepare(Math.min(rawDt, 0.25));
     this._autoExposure(dt);
     this._updateDem();
 
@@ -382,7 +397,7 @@ class App {
     this._resolution = this.renderer.getDrawingBufferSize(this._resolution || new THREE.Vector2());
     const sphere = new THREE.Sphere();
     const ctx = {
-      camPos, frustum, pixelAngle: this.pixelAngle, pixelRatio: this.pixelRatio, exposure: this.exposure,
+      camPos, frustum, pixelAngle: this.pixelAngle, pixelRatio: this.pixelRatio, exposure: this.exposure * this.nukes.adapt,
       time: now / 1000, ut: this.clock.ut, rate: this.clock.paused ? 0 : this.clock.rate, ambient: this.settings.ambient, bodies: this.ephem.bodies, byId: this.ephem.byId,
       sun: this.ephem.byId.sun, views: this.views, markerFloor: 0.03,
       base: BASE, focusId: (this.controller.fly?.body || this.controller.focus)?.id,
@@ -396,6 +411,7 @@ class App {
     this.shadows.render(this.renderer, ctx);
     for (const v of this.viewList) if (v.cloudMap && v.visible) v.cloudMap.render(this.renderer);
     this.markers.update(this.viewList, ctx);
+    this.nukes.apply(ctx);
     // orbit lines fade out when flying close to a surface
     const fR = this.controller.focus ? this.views[this.controller.focus.id].model.R : 1;
     const lowFade = Math.min(1, Math.max(0, Math.log(alt / (0.02 * fR)) / Math.log(15)));

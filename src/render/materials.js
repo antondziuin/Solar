@@ -164,6 +164,12 @@ export function createSurfaceMaterial(body, model, mode, textures, extra = {}) {
     uShadowSize: { value: 1 },
     uSunAngR: { value: 0.00465 },
     uLightVP: { value: new THREE.Matrix4() },
+    // nuclear explosions (NuclearBlasts)
+    uBlastG: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
+    uBlastL: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
+    uBlastI: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
+    uBlastS: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
+    uBlastCount: { value: 0 },
   };
   const defines = {};
   if (mode === 'rock') defines.MODE_ROCK = '';
