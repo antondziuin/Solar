@@ -18,6 +18,7 @@ import { Markers } from './render/Markers.js';
 import { TerrainShadows } from './render/TerrainShadows.js';
 import { UI } from './ui/ui.js';
 import { EarthDEM } from './core/earthDem.js';
+import { setUploadRenderer, pumpUploads } from './render/Uploader.js';
 import { NuclearBlasts } from './render/NuclearBlasts.js';
 
 const BASE = import.meta.env.BASE_URL;
@@ -66,6 +67,7 @@ class App {
     renderer.toneMappingExposure = 1;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer = renderer;
+    setUploadRenderer(renderer);
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1e14);
@@ -168,6 +170,25 @@ class App {
     setTimeout(() => this.nukes.loadNoise(), 1500);
     this._last = performance.now();
     renderer.setAnimationLoop((t) => this.frame(t));
+    setTimeout(() => this._precompile(), 300);
+  }
+
+  /**
+   * Compile every body's shaders in the background (parallel compile where the driver
+   * supports it), so that the first approach to a planet, its rings, clouds or atmosphere
+   * does not stall a frame. Hidden objects are made visible only for the synchronous part.
+   */
+  _precompile() {
+    const hidden = [];
+    this.scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    // programs depend on the render target (tone mapping / colour space): use the composer's
+    const prev = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.composer.renderTarget1);
+    let p;
+    try { p = this.renderer.compileAsync(this.scene, this.camera); } catch (e) { console.warn('precompile', e); }
+    this.renderer.setRenderTarget(prev);
+    for (const o of hidden) o.visible = false;
+    p?.catch((e) => console.warn('precompile', e));
   }
 
   /** Jump to a viewpoint: lat/lon in degrees (body-fixed when locked), altitude in metres. */
@@ -375,6 +396,7 @@ class App {
     this.nukes.prepare(Math.min(rawDt, 0.25));
     this._autoExposure(dt);
     this._updateDem();
+    pumpUploads(); // streamed body data: a slice of texture per frame
 
     const cam = this.camera;
     const camPos = this.controller.position;
