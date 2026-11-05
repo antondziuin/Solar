@@ -7,6 +7,7 @@
 //
 // The same data is kept on the CPU so that collision uses exactly the heights the GPU draws.
 import * as THREE from 'three';
+import { decodeAsset, absUrl } from '../workers/assetPool.js';
 
 export const DEM_LEVELS = 8;
 export const DEM_SIZE = 512;
@@ -17,16 +18,6 @@ const EARTH_R = 6371008.8;
 const DEG = Math.PI / 180;
 
 const wrap180 = (x) => ((((x + 180) % 360) + 360) % 360) - 180;
-
-async function decodeElevation(blob, w, h) {
-  const bmp = await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
-  const cw = w || bmp.width, ch = h || bmp.height;
-  const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(cw, ch) : Object.assign(document.createElement('canvas'), { width: cw, height: ch });
-  const g = canvas.getContext('2d', { willReadFrequently: true });
-  g.drawImage(bmp, 0, 0);
-  const px = g.getImageData(0, 0, cw, ch).data;
-  return { px, w: cw, h: ch };
-}
 
 export class EarthDEM {
   constructor() {
@@ -41,6 +32,7 @@ export class EarthDEM {
         size, texelDeg, texelM: texelDeg * DEG * EARTH_R, zoom,
         lonC: 0, latC: 0, valid: false, active: false, dirty: false,
         data: new Float32Array(DEM_SIZE * DEM_SIZE),
+        job: null, // incremental resample in progress (into a back buffer)
       });
     }
     this.tiles = new Map(); // key -> { data: Float32Array | null, promise, used }
@@ -60,10 +52,7 @@ export class EarthDEM {
   }
 
   async loadBase(url) {
-    const blob = await fetch(url).then((r) => r.blob());
-    const { px, w, h } = await decodeElevation(blob);
-    const a = new Float32Array(w * h);
-    for (let i = 0; i < w * h; i++) a[i] = px[i * 4] * 256 + px[i * 4 + 1] - 32768;
+    const { data: a, W: w, H: h } = await decodeAsset('elev16', { url: absUrl(url) });
     this.base = a; this.baseW = w; this.baseH = h;
     this.baseTex = new THREE.DataTexture(a, w, h, THREE.RedFormat, THREE.FloatType);
     this.baseTex.minFilter = this.baseTex.magFilter = THREE.NearestFilter;
@@ -137,13 +126,9 @@ export class EarthDEM {
       this.inflight++;
       t.state = 'loading';
       const url = TILE_URL.replace('{z}', t.z).replace('{x}', t.x).replace('{y}', t.y);
-      fetch(url, { mode: 'cors' })
-        .then((r) => { if (!r.ok) throw new Error(r.status); return r.blob(); })
-        .then((b) => decodeElevation(b, 256, 256))
-        .then(({ px }) => {
-          const a = new Float32Array(65536);
-          for (let i = 0; i < 65536; i++) a[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768;
-          t.data = a;
+      decodeAsset('tile', { url })
+        .then(({ data }) => {
+          t.data = data;
           t.state = 'ready';
           for (const L of this.levels) if (L.active && L.zoom === t.z) L.dirty = true;
         })
@@ -165,71 +150,108 @@ export class EarthDEM {
     return [x, y];
   }
 
-  /** Fill level L from the tile cache (falls back to the coarser data where tiles are missing). */
-  _resample(l) {
+  /** Start refilling level l around (lonC, latC); the work is done a few rows at a time. */
+  _startJob(l, lonC, latC) {
     const L = this.levels[l];
-    const N = DEM_SIZE, z = L.zoom, n = 2 ** z;
-    const lon0 = L.lonC - L.size / 2, lat1 = L.latC + L.size / 2;
-    const d = L.data;
-    let missing = 0;
-    let lastKey = '', last = null;
-    const coarser = (lat, lon) => {
-      // previous level or base map
-      let h = this.sampleBase(lat, lon);
-      for (let k = 0; k < l; k++) {
-        const P = this.levels[k];
-        if (!P.valid) break;
-        const u = wrap180(lon - P.lonC) / P.size + 0.5, v = (lat - (P.latC - P.size / 2)) / P.size;
-        if (u < 0 || u > 1 || v < 0 || v > 1) break;
-        h = this._sampleLevel(P, u, v);
-      }
-      return h;
-    };
-    for (let j = 0; j < N; j++) {
-      // row 0 = southern edge (texture v = 0)
-      const lat = lat1 - L.size + (j + 0.5) * L.texelDeg;
-      for (let i = 0; i < N; i++) {
-        const lon = wrap180(lon0 + (i + 0.5) * L.texelDeg);
-        if (Math.abs(lat) > 85.05) { d[j * N + i] = coarser(lat, lon); continue; }
-        const [mx, my] = this._mercTile(lat, lon, z);
-        const tx = Math.floor(mx), ty = Math.floor(my);
-        const key = `${z}/${((tx % n) + n) % n}/${ty}`;
-        let t = key === lastKey ? last : this.tiles.get(key);
-        lastKey = key; last = t;
-        if (!t || !t.data) { d[j * N + i] = coarser(lat, lon); missing++; continue; }
-        const fx = (mx - tx) * 256 - 0.5, fy = (my - ty) * 256 - 0.5;
-        const x0 = Math.max(0, Math.min(254, Math.floor(fx))), y0 = Math.max(0, Math.min(254, Math.floor(fy)));
-        const ax = Math.min(1, Math.max(0, fx - x0)), ay = Math.min(1, Math.max(0, fy - y0));
-        const a = t.data, k = y0 * 256 + x0;
-        let hv = (a[k] * (1 - ax) + a[k + 1] * ax) * (1 - ay) + (a[k + 256] * (1 - ax) + a[k + 257] * ax) * ay;
-        // tiles hold bedrock under the ice sheets; the base map carries the ice surface
-        if (lat < -60 || (lat > 59.5 && lon > -74 && lon < -11 && !(lat < 67.5 && lon > -25.5))) hv = Math.max(hv, this.sampleBase(lat, lon));
-        d[j * N + i] = hv;
-      }
+    const N = DEM_SIZE, n = 2 ** L.zoom;
+    const lon0 = lonC - L.size / 2, lat1 = latC + L.size / 2;
+    // Web-Mercator tile coordinates are separable: x depends on longitude only, y on latitude only
+    const tx = new Int32Array(N), fx = new Float32Array(N), lons = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      const lon = wrap180(lon0 + (i + 0.5) * L.texelDeg);
+      const mx = ((lon + 180) / 360) * n, t = Math.floor(mx);
+      lons[i] = lon; tx[i] = ((t % n) + n) % n; fx[i] = (mx - t) * 256 - 0.5;
     }
+    L.job = {
+      lonC, latC, lon0, lat1, row: 0, missing: 0, tx, fx, lons,
+      buf: L.job?.buf || L.back || new Float32Array(N * N),
+    };
+  }
+
+  /** Height from levels coarser than l (or the base map) where the tiles are missing. */
+  _coarser(l, lat, lon) {
+    let h = this.sampleBase(lat, lon);
+    for (let k = 0; k < l; k++) {
+      const P = this.levels[k];
+      if (!P.valid) break;
+      const u = wrap180(lon - P.lonC) / P.size + 0.5, v = (lat - (P.latC - P.size / 2)) / P.size;
+      if (u < 0 || u > 1 || v < 0 || v > 1) break;
+      h = this._sampleLevel(P, u, v);
+    }
+    return h;
+  }
+
+  /** Advance level l's job until `deadline`; returns true when the level was published. */
+  _runJob(l, deadline) {
+    const L = this.levels[l];
+    const J = L.job;
+    const N = DEM_SIZE, z = L.zoom, n = 2 ** z;
+    const d = J.buf, tx = J.tx, fxs = J.fx, lons = J.lons;
+    while (J.row < N) {
+      const j = J.row;
+      // row 0 = southern edge (texture v = 0)
+      const lat = J.lat1 - L.size + (j + 0.5) * L.texelDeg;
+      const o = j * N;
+      if (Math.abs(lat) > 85.05) {
+        for (let i = 0; i < N; i++) d[o + i] = this._coarser(l, lat, lons[i]);
+      } else {
+        const la = lat * DEG;
+        const my = ((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * n;
+        const ty = Math.floor(my);
+        const fy = (my - ty) * 256 - 0.5;
+        const y0 = Math.max(0, Math.min(254, Math.floor(fy))), ay = Math.min(1, Math.max(0, fy - y0));
+        // tiles hold bedrock under the ice sheets; the base map carries the ice surface
+        const iceRow = lat < -60 || lat > 59.5;
+        let lastX = -1, t = null;
+        for (let i = 0; i < N; i++) {
+          if (tx[i] !== lastX) { lastX = tx[i]; t = this.tiles.get(`${z}/${lastX}/${ty}`); }
+          const lon = lons[i];
+          if (!t || !t.data) { d[o + i] = this._coarser(l, lat, lon); J.missing++; continue; }
+          const fx = fxs[i];
+          const x0 = Math.max(0, Math.min(254, Math.floor(fx))), ax = Math.min(1, Math.max(0, fx - x0));
+          const a = t.data, k = y0 * 256 + x0;
+          let hv = (a[k] * (1 - ax) + a[k + 1] * ax) * (1 - ay) + (a[k + 256] * (1 - ax) + a[k + 257] * ax) * ay;
+          if (iceRow && (lat < -60 || (lon > -74 && lon < -11 && !(lat < 67.5 && lon > -25.5)))) hv = Math.max(hv, this.sampleBase(lat, lon));
+          d[o + i] = hv;
+        }
+      }
+      J.row++;
+      if (performance.now() > deadline) return false;
+    }
+    // publish: swap buffers, upload the layer, move the window
+    L.back = L.data;
+    L.data = d;
+    L.lonC = J.lonC; L.latC = J.latC;
     L.valid = true;
-    L.complete = missing === 0;
+    L.complete = J.missing === 0;
+    L.job = null;
     this.version++;
     this.levelTex.image.data.set(d, l * N * N);
     this.levelTex.addLayerUpdate(l);
     this.levelTex.needsUpdate = true;
     this.winUniform[l].set(L.lonC, L.latC, L.size, L.texelM);
+    return true;
   }
 
   /**
    * Keep the clipmap centred under the camera.
    * @param lat, lon  sub-camera point (deg); @param alt camera altitude above ground (m)
    */
-  update(lat, lon, alt, budgetMs = 6) {
+  update(lat, lon, alt, budgetMs = 3) {
     if (!this.base) return;
-    const t0 = performance.now();
+    const deadline = performance.now() + budgetMs;
+    let working = false; // one level resampled at a time (coarsest first)
     for (let l = 0; l < DEM_LEVELS; l++) {
       const L = this.levels[l];
       const active = this.enabled && alt < 48 * L.texelM * 1.5;
       if (!active) {
-        L.active = false;
         // deactivate this and all finer levels
-        for (let k = l; k < DEM_LEVELS; k++) { this.levels[k].active = false; this.winUniform[k].w = 0; }
+        for (let k = l; k < DEM_LEVELS; k++) {
+          const K = this.levels[k];
+          K.active = false; K.valid = false;
+          if (K.job) { K.back = K.job.buf; K.job = null; }
+          this.winUniform[k].w = 0;
+        }
         break;
       }
       L.active = true;
@@ -237,21 +259,31 @@ export class EarthDEM {
       const snap = L.texelDeg * 32;
       const lonC = Math.round(lon / snap) * snap;
       const latC = Math.max(-90 + L.size / 2, Math.min(90 - L.size / 2, Math.round(lat / snap) * snap));
-      const moved = Math.abs(wrap180(lonC - L.lonC)) > L.size * 0.2 || Math.abs(latC - L.latC) > L.size * 0.2;
-      if (!L.valid || moved) { L.lonC = lonC; L.latC = latC; L.dirty = true; L.valid = false; }
-      // request the tiles covering the window
-      const [x0, y1] = this._mercTile(L.latC - L.size / 2, L.lonC - L.size / 2, L.zoom);
-      const [x1, y0] = this._mercTile(L.latC + L.size / 2, L.lonC + L.size / 2, L.zoom);
+      // the target window: the job's if one is running, else the published one
+      const tLon = L.job ? L.job.lonC : L.lonC, tLat = L.job ? L.job.latC : L.latC;
+      const moved = Math.abs(wrap180(lonC - tLon)) > L.size * 0.2 || Math.abs(latC - tLat) > L.size * 0.2;
+      if ((!L.valid && !L.job) || moved) {
+        if (L.job) { L.back = L.job.buf; L.job = null; }
+        L.dirty = true; L.wantLon = lonC; L.wantLat = latC;
+      }
+      const cLon = L.job ? L.job.lonC : L.dirty ? L.wantLon ?? L.lonC : L.lonC;
+      const cLat = L.job ? L.job.latC : L.dirty ? L.wantLat ?? L.latC : L.latC;
+      // request the tiles covering the (target) window
+      const [x0, y1] = this._mercTile(cLat - L.size / 2, cLon - L.size / 2, L.zoom);
+      const [x1, y0] = this._mercTile(cLat + L.size / 2, cLon + L.size / 2, L.zoom);
       const n = 2 ** L.zoom;
       for (let ty = Math.floor(y0); ty <= Math.floor(y1); ty++) {
         if (ty < 0 || ty >= n) continue;
         for (let tx = Math.floor(x0); tx <= Math.floor(x1); tx++) this._request(L.zoom, ((tx % n) + n) % n, ty);
       }
-      if (L.dirty && performance.now() - t0 < budgetMs) {
-        L.dirty = false;
-        this._resample(l);
-        // finer levels fall back to this one, so refresh them too
-        for (let k = l + 1; k < DEM_LEVELS; k++) if (this.levels[k].valid) this.levels[k].dirty = true;
+      if (working || performance.now() > deadline) continue;
+      if (!L.job && L.dirty) { L.dirty = false; this._startJob(l, cLon, cLat); }
+      if (L.job) {
+        working = true;
+        if (this._runJob(l, deadline)) {
+          // finer levels fall back to this one, so refresh them too
+          for (let k = l + 1; k < DEM_LEVELS; k++) if (this.levels[k].valid || this.levels[k].job) this.levels[k].dirty = true;
+        }
       }
     }
     this._pump();

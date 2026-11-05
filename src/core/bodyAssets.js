@@ -1,33 +1,16 @@
 // Real global data of planets and moons (see scripts/build_body_maps.py): elevation models
 // (USGS: LOLA/Kaguya, MOLA, MESSENGER, New Horizons, Cassini, HRSC) and surface maps.
 import * as THREE from 'three';
-
-async function decode(url) {
-  const blob = await fetch(url).then((r) => { if (!r.ok) throw new Error(`${url}: ${r.status}`); return r.blob(); });
-  const bmp = await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
-  const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
-  const g = canvas.getContext('2d', { willReadFrequently: true });
-  g.drawImage(bmp, 0, 0);
-  return g.getImageData(0, 0, bmp.width, bmp.height);
-}
+import { decodeAsset, absUrl } from '../workers/assetPool.js';
+import { uploadProgressive } from '../render/Uploader.js';
 
 /** Elevation model: GPU texture (RG float: height, coverage) + bilinear CPU sampler. */
 export async function loadBodyDem(base, entry) {
-  const img = await decode(base + entry.file);
-  const { width: W, height: H, data: px } = img;
-  const a = new Float32Array(W * H * 2);
-  let min = Infinity, max = -Infinity;
-  const k = entry.scale || 1; // metres per unit (large relief of small irregular moons)
-  for (let i = 0; i < W * H; i++) {
-    const valid = px[i * 4 + 2] > 127 ? 1 : 0;
-    const h = valid ? (px[i * 4] * 256 + px[i * 4 + 1] - 32768) * k : 0;
-    a[i * 2] = h;
-    a[i * 2 + 1] = valid;
-    if (valid) { if (h < min) min = h; if (h > max) max = h; }
-  }
+  // fetch + decode + convert in a worker, then upload a slice per frame
+  const { data: a, W, H, min, max } = await decodeAsset('dem', { url: absUrl(base + entry.file), scale: entry.scale || 1 });
   const tex = new THREE.DataTexture(a, W, H, THREE.RGFormat, THREE.FloatType);
   tex.minFilter = tex.magFilter = THREE.NearestFilter;
-  tex.needsUpdate = true;
+  await uploadProgressive(tex);
   const radius = entry.radius;
   return {
     tex, radius, min, max, W, H,
@@ -47,29 +30,15 @@ export async function loadBodyDem(base, entry) {
 
 /** Surface colour map (sRGB), with its mean linear luminance over the covered area. */
 export async function loadBodyMap(base, entry) {
-  const tex = await new THREE.TextureLoader().loadAsync(base + entry.file);
+  const { data, W, H, mean, p99, gray } = await decodeAsset('map', { url: absUrl(base + entry.file) });
+  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.anisotropy = 4;
+  tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
-  // mean luminance (on a small copy)
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
-  const g = c.getContext('2d', { willReadFrequently: true });
-  g.drawImage(tex.image, 0, 0, 256, 128);
-  const d = g.getImageData(0, 0, 256, 128).data;
-  let s = 0, n = 0;
-  const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-  const all = [];
-  let sat = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    sat += Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]);
-    const l = 0.2126 * lin(d[i]) + 0.7152 * lin(d[i + 1]) + 0.0722 * lin(d[i + 2]);
-    if (l > 0.0006) { s += l; n++; all.push(Math.max(lin(d[i]), lin(d[i + 1]), lin(d[i + 2]))); }
-  }
-  all.sort((x, y) => x - y);
-  const p99 = all.length ? all[Math.floor(all.length * 0.99)] : 1;
+  tex.generateMipmaps = true;
+  await uploadProgressive(tex);
   // single-band mosaics (stored as gray RGB) get the body's colours in the shader
-  const gray = sat / (d.length / 4) < 1.5;
-  return { tex, mean: n ? s / n : 0.5, p99, gray };
+  return { tex, mean, p99, gray };
 }
